@@ -35,8 +35,8 @@ def convert_observation_to_space(observation):
 class MujocoEnv(gym_custom.Env):
     """Superclass for all MuJoCo environments.
     """
-
-    def __init__(self, model_path, frame_skip):
+    #dscho mod
+    def __init__(self, model_path, frame_skip, automatically_set_spaces=True):
         if model_path.startswith("/"):
             fullpath = model_path
         else:
@@ -57,14 +57,14 @@ class MujocoEnv(gym_custom.Env):
 
         self.init_qpos = self.sim.data.qpos.ravel().copy()
         self.init_qvel = self.sim.data.qvel.ravel().copy()
+        if automatically_set_spaces:
+            self._set_action_space()
 
-        self._set_action_space()
+            action = self.action_space.sample()
+            observation, _reward, done, _info = self.step(action)
+            assert not done
 
-        action = self.action_space.sample()
-        observation, _reward, done, _info = self.step(action)
-        assert not done
-
-        self._set_observation_space(observation)
+            self._set_observation_space(observation)
 
         self.seed()
 

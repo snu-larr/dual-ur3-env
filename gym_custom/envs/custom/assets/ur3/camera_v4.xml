@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<mujoco model="camera_v4">
+    <!--quat 등도 가능 xyaxes="1 0 0 0 0 1" quat ="-3.58062746e-08, -2.50718232e-08,  5.73576434e-01,  8.19152046e-01"-->
+    <!-- <camera pos="0 -1.9 1.3" name="frontview"  xyaxes="1 0 0 0 0.3 0.7"  />  -->
+    <camera pos="0 -1.6 0.9" name="frontview"  xyaxes="1 0 0 0 0 1"/>
+    <camera pos="1.3 -1.6 2.2" name="topview"  xyaxes="0.5 0.5 0 0 0.5 0.5"  />
+    <!-- <camera pos="0 0 2" name="sideview"  xyaxes="1 0 0 0 1 0"  />  videowrapper에서 topview를 저렇게 잡아놔서 그렇지 실제로는 얘가 topview-->
+</mujoco>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<mujoco model="obstacle-v5">
+
+    <body name="obstacle_1" pos="0.35 -0.55 0.97">
+        <site name="obstacle_1_center" pos="0.0 0.0 0.0" size="0.01" rgba="1 1 1 1"/>
+        <geom name="wall_1" type="box" pos="0 0 0" size="0.03 0.15 0.25" rgba=".6 .6 .5 1"
+            contype="1" conaffinity="1" friction="2 0.1 0.002" material="metal"/>
+    </body>
+    <body name="obstacle_2" pos="-0.35 -0.55 0.97">
+    <site name="obstacle_2_center" pos="0.0 0.0 0.0" size="0.01" rgba="1 1 1 1"/>
+        <geom name="wall_2" type="box" pos="0 0 0" size="0.03 0.15 0.25" rgba=".6 .6 .5 1"
+            contype="1" conaffinity="1" friction="2 0.1 0.002" material="metal"/>
+    </body>
+</mujoco>

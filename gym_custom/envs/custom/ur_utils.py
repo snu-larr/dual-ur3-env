@@ -24,6 +24,73 @@ class NullObjectiveBase(object):
     def _evaluate(self, SO3):
         raise NotImplementedError
 
+class NoConstraint(NullObjectiveBase):
+
+    def __init__(self):
+        pass
+
+    def _evaluate(self, SO3):
+        return 0.0
+
+class UprightConstraint(NullObjectiveBase):
+    
+    def __init__(self):
+        pass
+
+    def _evaluate(self, SO3):
+        axis_des = np.array([0, 0, -1])
+        axis_curr = SO3[:,2]
+        return 1.0 - np.dot(axis_curr, axis_des)
+
+class HorizontalConstraint(NullObjectiveBase):
+    
+    def __init__(self):
+        pass
+
+    def _evaluate(self, SO3):
+        axis_des = np.array([1, 0, 0])
+        axis_curr = SO3[:,2]
+        return 1.0 - np.dot(axis_curr, axis_des)
+
+class SO3Constraint(NullObjectiveBase):
+    '''
+    Current DualUR3Env 기준 :
+    vertical(side): np.array([[1,0,0], [0,-1,0], [0,0,-1]]) 
+    vertical(front): np.array([[0,1,0], [1,0,0], [0,0,-1]])
+    horizontal(right, side): np.array([[0,0,-1], [0,-1,0], [-1,0,0]])
+    horizontal(left, side): np.array([[0,0,1], [0,-1,0], [1,0,0]])
+    horizontal(right, front): np.array([[0,0,-1], [1,0,0], [0,-1,0]])
+    horizontal(left, front): np.array([[0,0,1], [-1,0,0], [0,-1,0]])
+    '''
+    def __init__(self, SO3=None):
+        self.setSO3_des(SO3)
+
+    def evaluate(self, SO3):
+        so3_err = 0.5*( 3 - np.trace(np.matmul(SO3, np.linalg.inv(self.SO3_des))) )
+        # so3_err = logm(np.matmul(SO3, np.linalg.inv(self.SO3_des)))
+        # Riemannian/Geodesic/Angle metric
+        # return np.linalg.norm(so3_err, 'fro')/np.sqrt(2)
+        return so3_err
+
+    def setSO3_des(self, SO3):
+        if SO3 is None:
+            self.SO3_des = np.eye(3)
+        elif SO3 == 'vertical_side':
+            self.SO3_des = np.array([[1,0,0], [0,-1,0], [0,0,-1]]) 
+        elif SO3 == 'vertical_front':
+            self.SO3_des = np.array([[0,1,0], [1,0,0], [0,0,-1]])
+        elif SO3 == 'horizontal_right_side':
+            self.SO3_des = np.array([[0,0,-1], [0,-1,0], [-1,0,0]])
+        elif SO3 == 'horizontal_left_side':
+            self.SO3_des = np.array([[0,0,1], [0,-1,0], [1,0,0]])
+        elif SO3 == 'horizontal_right_front':
+            self.SO3_des = np.array([[0,0,-1], [1,0,0], [0,-1,0]])
+        elif SO3 == 'horizontal_left_front':
+            self.SO3_des = np.array([[0,0,1], [-1,0,0], [0,-1,0]])
+        elif not isinstance(SO3, str):
+            self.SO3_des = SO3
+        elif isinstance(SO3, str):
+            raise NotImplementedError
 
 class URScriptWrapper(ActionWrapper):
     '''
@@ -260,10 +327,14 @@ class URScriptWrapper(ActionWrapper):
 
 
 ### Derived class
-
-class URScriptWrapper_DualUR3(ActionWrapper):
+#dscho mod
+from gym_custom.core import Serializable
+class URScriptWrapper_DualUR3(ActionWrapper, Serializable):
 
     def __init__(self, env, PID_gains, ur3_scale_factor, gripper_scale_factor):
+        
+        Serializable.quick_init(self, locals())
+
         super().__init__(env)
 
         # cf. f = lambda : np.zeros([5])
@@ -306,6 +377,24 @@ class URScriptWrapper_DualUR3(ActionWrapper):
         self.wrapper_right._clear_integration_term()
         self.wrapper_left._clear_integration_term()
         return self.env.reset(**kwargs)
+        
+    def save_init_params(self, locals):
+        """
+        Should call this FIRST THING in the __init__ method if you ever want
+        to serialize or clone this network.
+
+        Usage:
+        ```
+        def __init__(self, ...):
+            self.init_serialization(locals())
+            ...
+        ```
+        :param locals:
+        :return:
+        """
+        Serializable.quick_init(self, locals)
+
+
 
 # class URScriptWrapper_DualUR3_fail(URScriptWrapper):
 #     '''

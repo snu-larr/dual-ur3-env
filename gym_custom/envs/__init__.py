@@ -172,6 +172,402 @@ register(
     reward_threshold=0.0,
 )
 
+#dscho mod
+
+register(
+    id='dscho-dual-ur3-v0',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_env:DSCHODualUR3Env',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3.xml'}
+)
+'''
+register(
+    id='dscho-single-reach-ur3-v0',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_env:DSCHOSingleReachUR3Env',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-obstacle-v0',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_env:DSCHODualUR3EnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    
+)
+
+register(
+    id='dscho-single-reach-ur3-obstacle-v0',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_env:DSCHOSingleReachUR3EnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+)
+'''
+# dscho mod (goal env)
+
+##############  bar  ################
+register(
+    id='dscho-dual-ur3-bar-v0',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnv',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_bar.xml'}
+)
+register(
+    id='dscho-dual-ur3-bar-pickandplace-v0',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnv',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_bar_pickandplace.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-bar-obstacle-v0',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_bar_obstacle_v0.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-bar-obstacle-v1',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_bar_obstacle_v1.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-bar-obstacle-v2',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_bar_obstacle_v2.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-bar-obstacle-v3',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_bar_obstacle_v3.xml'}
+)
+register(
+    id='dscho-dual-ur3-bar-obstacle-v4',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_bar_obstacle_v4.xml'}
+)
+register(
+    id='dscho-dual-ur3-bar-obstacle-v5',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_bar_obstacle_v5.xml'}
+)
+register(
+    id='dscho-dual-ur3-bar-pickandplace-obstacle-v0',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_bar_pickandplace_obstacle_v0.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-bar-pickandplace-obstacle-v1',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_bar_pickandplace_obstacle_v1.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-bar-pickandplace-obstacle-v2',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_bar_pickandplace_obstacle_v2.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-bar-pickandplace-obstacle-v3',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_bar_pickandplace_obstacle_v3.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-bar-pickandplace-obstacle-v4',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_bar_pickandplace_obstacle_v4.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-bar-pickandplace-obstacle-v5',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_bar_pickandplace_obstacle_v5.xml'}
+)
+##############  cylinder  ################
+
+register(
+    id='dscho-dual-ur3-cylinder-v0',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnv',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_cylinder.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-cylinder-pickandplace-v0',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnv',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_cylinder_pickandplace.xml'}
+)
+register(
+    id='dscho-dual-ur3-cylinder-obstacle-v0',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_cylinder_obstacle_v0.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-cylinder-obstacle-v1',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_cylinder_obstacle_v1.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-cylinder-obstacle-v2',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_cylinder_obstacle_v2.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-cylinder-obstacle-v3',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_cylinder_obstacle_v3.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-cylinder-obstacle-v4',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_cylinder_obstacle_v4.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-cylinder-obstacle-v5',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_cylinder_obstacle_v5.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-cylinder-pickandplace-obstacle-v0',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_cylinder_pickandplace_obstacle_v0.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-cylinder-pickandplace-obstacle-v1',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_cylinder_pickandplace_obstacle_v1.xml'}
+)
+
+
+register(
+    id='dscho-dual-ur3-cylinder-pickandplace-obstacle-v2',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_cylinder_pickandplace_obstacle_v2.xml'}
+)
+
+
+register(
+    id='dscho-dual-ur3-cylinder-pickandplace-obstacle-v3',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_cylinder_pickandplace_obstacle_v3.xml'}
+)
+register(
+    id='dscho-dual-ur3-cylinder-pickandplace-obstacle-v4',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_cylinder_pickandplace_obstacle_v4.xml'}
+)
+register(
+    id='dscho-dual-ur3-cylinder-pickandplace-obstacle-v5',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_cylinder_pickandplace_obstacle_v5.xml'}
+)
+##############  stick pull  ################
+
+register(
+    id='dscho-dual-ur3-stick-pull-v0',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnv',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_stick_pull.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-stick-pull-obstacle-v0',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_stick_pull_obstacle_v0.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-stick-pull-obstacle-v2',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_stick_pull_obstacle_v2.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-stick-pull-obstacle-v3',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_stick_pull_obstacle_v3.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-stick-pull-obstacle-v4',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_stick_pull_obstacle_v4.xml'}
+)
+
+register(
+    id='dscho-dual-ur3-stick-pull-obstacle-v5',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHODualUR3PickAndPlaceEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_stick_pull_obstacle_v5.xml'}
+)
+
+##############  single  ################
+register(
+    id='dscho-single-ur3-reach-v0',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHOSingleUR3ReachEnv',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3.xml'}
+)
+
+register(
+    id='dscho-single-ur3-reach-obstacle-v0',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHOSingleUR3ReachEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_obstacle_v0.xml'}
+)
+
+register(
+    id='dscho-single-ur3-reach-obstacle-v1',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHOSingleUR3ReachEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_obstacle_v1.xml'}
+)
+register(
+    id='dscho-single-ur3-reach-obstacle-v2',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHOSingleUR3ReachEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_obstacle_v2.xml'}
+)
+register(
+    id='dscho-single-ur3-reach-obstacle-v3',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHOSingleUR3ReachEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_obstacle_v3.xml'}
+)
+register(
+    id='dscho-single-ur3-reach-obstacle-v4',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHOSingleUR3ReachEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_obstacle_v4.xml'}
+)
+register(
+    id='dscho-single-ur3-reach-obstacle-v5',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_env:DSCHOSingleUR3ReachEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_obstacle_v5.xml'}
+)
+##############  single for torch  ################
+register(
+    id='dscho-single-ur3-reach-for-torch-v0',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_for_torch:DSCHOSingleUR3ReachEnv',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3.xml'}
+)
+
+register(
+    id='dscho-single-ur3-reach-for-torch-obstacle-v0',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_for_torch:DSCHOSingleUR3ReachEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_obstacle_v0.xml'}
+)
+
+register(
+    id='dscho-single-ur3-reach-for-torch-obstacle-v1',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_for_torch:DSCHOSingleUR3ReachEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_obstacle_v1.xml'}
+)
+register(
+    id='dscho-single-ur3-reach-for-torch-obstacle-v2',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_for_torch:DSCHOSingleUR3ReachEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_obstacle_v2.xml'}
+)
+register(
+    id='dscho-single-ur3-reach-for-torch-obstacle-v3',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_for_torch:DSCHOSingleUR3ReachEnvObstacle',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_obstacle_v3.xml'}
+)
+
 # Algorithmic
 # ----------------------------------------
 

@@ -8,31 +8,94 @@ import gym_custom
 from gym_custom import utils
 from gym_custom.envs.mujoco import MujocoEnv
 
+#dscho mod
+from gym_custom.core import Serializable
+no_object_xmls = ['dscho_dual_ur3.xml', 'dscho_dual_ur3_obstacle_v0.xml', 'dscho_dual_ur3_obstacle_v1.xml', 'dscho_dual_ur3_obstacle_v2.xml', 'dscho_dual_ur3_obstacle_v3.xml', 'dscho_dual_ur3_obstacle_v4.xml', 'dscho_dual_ur3_obstacle_v5.xml']
+lift_xmls = ['dscho_dual_ur3_bar.xml', 'dscho_dual_ur3_bar_obstacle_v0.xml', 'dscho_dual_ur3_bar_obstacle_v1.xml', 'dscho_dual_ur3_bar_obstacle_v2.xml','dscho_dual_ur3_bar_obstacle_v3.xml','dscho_dual_ur3_bar_obstacle_v4.xml','dscho_dual_ur3_bar_obstacle_v5.xml',\
+            'dscho_dual_ur3_cylinder.xml', 'dscho_dual_ur3_cylinder_obstacle_v0.xml', 'dscho_dual_ur3_cylinder_obstacle_v1.xml', 'dscho_dual_ur3_cylinder_obstacle_v2.xml', 'dscho_dual_ur3_cylinder_obstacle_v3.xml','dscho_dual_ur3_cylinder_obstacle_v4.xml','dscho_dual_ur3_cylinder_obstacle_v5.xml',\
+            ]
+pickandplace_xmls = ['dscho_dual_ur3_bar_pickandplace.xml', 'dscho_dual_ur3_bar_pickandplace_obstacle_v0.xml', 'dscho_dual_ur3_bar_pickandplace_obstacle_v1.xml','dscho_dual_ur3_bar_pickandplace_obstacle_v2.xml', 'dscho_dual_ur3_bar_pickandplace_obstacle_v3.xml','dscho_dual_ur3_bar_pickandplace_obstacle_v4.xml','dscho_dual_ur3_bar_pickandplace_obstacle_v5.xml',\
+                    'dscho_dual_ur3_cylinder_pickandplace.xml', 'dscho_dual_ur3_cylinder_pickandplace_obstacle_v0.xml', 'dscho_dual_ur3_cylinder_pickandplace_obstacle_v1.xml', 'dscho_dual_ur3_cylinder_pickandplace_obstacle_v2.xml', 'dscho_dual_ur3_cylinder_pickandplace_obstacle_v3.xml','dscho_dual_ur3_cylinder_pickandplace_obstacle_v4.xml','dscho_dual_ur3_cylinder_pickandplace_obstacle_v5.xml',\
+                    ]
+stick_pull_xmls = ['dscho_dual_ur3_stick_pull.xml', 'dscho_dual_ur3_stick_pull_obstacle_v0.xml', 'dscho_dual_ur3_stick_pull_obstacle_v2.xml', 'dscho_dual_ur3_stick_pull_obstacle_v3.xml','dscho_dual_ur3_stick_pull_obstacle_v4.xml','dscho_dual_ur3_stick_pull_obstacle_v5.xml']
 
-class DualUR3Env(MujocoEnv, utils.EzPickle):
+class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
 
     # class variables
-    mujoco_xml_full_path = os.path.join(os.path.dirname(__file__), 'assets/ur3/dual_ur3_base.xml')
+    # mujoco_xml_full_path = os.path.join(os.path.dirname(__file__), 'assets/ur3/dual_ur3_base.xml')
     mujocoenv_frame_skip = 1
     ur3_nqpos, gripper_nqpos = 6, 10 # per ur3/gripper joint pos dim
     ur3_nqvel, gripper_nqvel = 6, 10 # per ur3/gripper joint vel dim
     ur3_nact, gripper_nact = 6, 2 # per ur3/gripper action dim
     objects_nqpos = [7, 7, 7, 7]
     objects_nqvel = [6, 6, 6, 6]
-
-    def __init__(self):
-        self._ezpickle_init()
+    
+    
+    def __init__(self,
+                xml_filename = None, 
+                initMode = None,
+                automatically_set_spaces=True,
+                ur3_random_init = False,
+                ):
+        #dscho mod
+        self.save_init_params(locals())
+        self.xml_filename = xml_filename
+        self.initMode = initMode
+        self.automatically_set_spaces = automatically_set_spaces
+        self.ur3_random_init = ur3_random_init
+        if xml_filename is None :
+            self.mujoco_xml_full_path = os.path.join(os.path.dirname(__file__), 'assets/ur3/dual_ur3_base.xml')
+            self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [7,7,7,7] 
+            self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, [6,6,6,6]
+            self.num_objects = 4
+        elif xml_filename in lift_xmls or xml_filename in pickandplace_xmls:
+            self.mujoco_xml_full_path = os.path.join(os.path.dirname(__file__), 'assets/ur3/'+xml_filename)
+            self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [7] # long box or cylinder
+            self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, [6]
+            self.num_objects = 1
+        elif xml_filename in no_object_xmls:
+            self.mujoco_xml_full_path = os.path.join(os.path.dirname(__file__), 'assets/ur3/'+xml_filename)
+            self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [0]
+            self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, [0]
+            self.num_objects = 0
+        elif xml_filename in stick_pull_xmls:
+            self.mujoco_xml_full_path = os.path.join(os.path.dirname(__file__), 'assets/ur3/'+xml_filename)
+            self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [7,2] # long box(stick), pull_object
+            self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, [6,2]
+            self.num_objects = 2
+        
+        #self._ezpickle_init()
         self._mujocoenv_init()
         self._check_model_parameter_dimensions()
         self._define_class_variables()
 
-    def _ezpickle_init(self):
-        '''overridable method'''
-        utils.EzPickle.__init__(self)
+    def save_init_params(self, locals):
+        """
+        Should call this FIRST THING in the __init__ method if you ever want
+        to serialize or clone this network.
+
+        Usage:
+        ```
+        def __init__(self, ...):
+            self.init_serialization(locals())
+            ...
+        ```
+        :param locals:
+        :return:
+        """
+        Serializable.quick_init(self, locals)
+
+    # def _ezpickle_init(self):
+    #    '''overridable method'''
+    #    utils.EzPickle.__init__(self)
 
     def _mujocoenv_init(self):
         '''overridable method'''
-        MujocoEnv.__init__(self, self.mujoco_xml_full_path, self.mujocoenv_frame_skip)
+        #dscho mod
+        MujocoEnv.__init__(self, self.mujoco_xml_full_path, self.mujocoenv_frame_skip, automatically_set_spaces = self.automatically_set_spaces)
+        if not self.automatically_set_spaces:
+            self._set_action_space()
+            self.do_simulation(self.action_space.sample(), self.frame_skip)
 
     def _check_model_parameter_dimensions(self):
         '''overridable method'''
@@ -43,11 +106,46 @@ class DualUR3Env(MujocoEnv, utils.EzPickle):
     def _define_class_variables(self):
         '''overridable method'''
         # Initial position for UR3
-        self.init_qpos[0:self.ur3_nqpos] = \
-            np.array([-90.0, -90.0, -90.0, -90.0, -135.0, 90.0])*np.pi/180.0 # right arm
-        self.init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = \
-            np.array([90.0, -90.0, 90.0, -90.0, 135.0, -90.0])*np.pi/180.0 # left arm
-        
+        # dscho mod
+        if self.ur3_random_init:
+            pass
+        if self.initMode is None :
+            # self.init_qpos[0:self.ur3_nqpos] = \
+            #     np.array([-90.0, -90.0, -90.0, -90.0, -135.0, 90.0])*np.pi/180.0 # right arm
+            # self.init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = \
+            #     np.array([90.0, -90.0, 90.0, -90.0, 135.0, -90.0])*np.pi/180.0 # left arm
+            self.init_qpos[0:self.ur3_nqpos] = \
+                np.array([-90.0, -90.0, -90.0, -90.0, -135.0, 180.0])*np.pi/180.0 # right arm
+            self.init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = \
+                np.array([90.0, -90.0, 90.0, -90.0, 135.0, -180.0])*np.pi/180.0 # left arm
+        elif self.initMode =='vertical':
+            
+            # vertical init(high)
+            # self.init_qpos[0:self.ur3_nqpos] = \
+            #     np.array([-1.54849013, -2.45489269, -2.41625398,  0.0827262,  -2.35112646,  3.07500069]) # right arm
+            # self.init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = \
+            #     np.array([ 1.55129035, -0.68582331,  2.40896034, -3.22916226,  2.3560944,  -3.06996474])# left arm
+            # vertical init(mid, wide)
+            # self.init_qpos[0:self.ur3_nqpos] = \
+            #     np.array([-1.27263236, -2.4677664,  -0.88920031, -1.6874239, -2.29199926, 1.57222008]) # right arm
+            # self.init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = \
+            #     np.array([1.27265907, -0.67387192, 0.88853694, -1.45401963, 2.29304517, -1.57573228])# left arm
+            # vertical init(obstacle)
+            self.init_qpos[0:self.ur3_nqpos] = \
+                np.array([-0.32213427, -1.81002217, -1.87559869, -1.72603011, -1.79932887,  1.82011286]) # right arm
+            self.init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = \
+                np.array([ 0.3209594,  -1.33282653,  1.87653391, -1.41410399, 1.79674747, -1.81847637])# left arm
+            
+            
+
+        elif self.initMode =='horizontal':
+            # horizontal init
+            self.init_qpos[0:self.ur3_nqpos] = \
+                np.array([ 1.82496873, -1.78037016,  1.86075417,  4.40278818,  5.47660708, -2.8826006]) # right arm
+            self.init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = \
+                np.array([-1.85786483, -1.3540493,  -1.89351501, -1.18579177,  0.82976128, -0.50789828])# left arm
+        else :
+            raise NotImplementedError
         # Variables for forward/inverse kinematics
         # https://www.universal-robots.com/articles/ur-articles/parameters-for-calculations-of-kinematics-and-dynamics/
         self.kinematics_params = {}
@@ -112,9 +210,54 @@ class DualUR3Env(MujocoEnv, utils.EzPickle):
 
         return R, p, T
 
+    #dscho mod
+    def forward_kinematics_DH_parallel(self, q, arm):
+        # assert len(q) == self.ur3_nqpos
+        assert q.ndim ==2
+        assert q.shape[-1] == self.ur3_nqpos
+        num_parallel = q.shape[0]
+
+        if arm == 'right':
+            T_0_i = np.tile(self.kinematics_params['T_wb_right'], (num_parallel,1,1)) #[parallel, 4,4]
+        elif arm == 'left':
+            T_0_i = np.tile(self.kinematics_params['T_wb_left'], (num_parallel,1,1))
+        else:
+            raise ValueError('Invalid arm type!')
+        
+        T = np.zeros([num_parallel, self.ur3_nqpos+1, 4, 4])
+        R = np.zeros([num_parallel, self.ur3_nqpos+1, 3, 3])
+        p = np.zeros([num_parallel, self.ur3_nqpos+1, 3])
+        # Base frame
+        T[:, 0,:,:] = T_0_i
+        R[:, 0,:,:] = T_0_i[:, 0:3,0:3]
+        p[:, 0,:] = T_0_i[:, 0:3,3]
+
+        for i in range(self.ur3_nqpos):
+            ct = np.cos(q[:, i] + np.tile(self.kinematics_params['offset'][i], num_parallel))
+            st = np.sin(q[:, i] + np.tile(self.kinematics_params['offset'][i], num_parallel))
+            ca = np.cos(np.tile(self.kinematics_params['alpha'][i], num_parallel))
+            sa = np.sin(np.tile(self.kinematics_params['alpha'][i], num_parallel)) #[parallel]
+            first_row = np.stack([ct, -st*ca, st*sa, np.tile(self.kinematics_params['a'][i], num_parallel)*ct], axis = -1) #[parallel, 4]
+            second_row = np.stack([st, ct*ca, -ct*sa, np.tile(self.kinematics_params['a'][i], num_parallel)*st], axis = -1)
+            third_row = np.stack([np.zeros_like(sa), sa, ca, np.tile(self.kinematics_params['d'][i], num_parallel)], axis = -1)
+            fourth_row = np.stack([np.zeros_like(sa), np.zeros_like(sa), np.zeros_like(sa), np.ones_like(sa)], axis = -1)
+            T_i_iplus1 = np.stack([first_row, second_row, third_row, fourth_row], axis = 1) #[parallel, 4, 4]
+
+            T_0_i = np.matmul(T_0_i, T_i_iplus1) #[paralell, 4,4]
+            # cf. base frame at i=0
+            T[:, i+1, :, :] = T_0_i
+            R[:, i+1, :, :] = T_0_i[:, 0:3,0:3]
+            p[:, i+1, :] = T_0_i[:, 0:3,3]
+
+        return R, p, T
+
     def forward_kinematics_ee(self, q, arm):
         R, p, T = self.forward_kinematics_DH(q, arm)
         return R[-1,:,:], p[-1,:], T[-1,:,:]
+
+    def forward_kinematics_ee_parallel(self, q, arm):
+        R, p, T = self.forward_kinematics_DH_parallel(q, arm)
+        return R[:,-1,:,:], p[:,-1,:], T[:,-1,:,:]
 
     def _jacobian_DH(self, q, arm):
         assert len(q) == self.ur3_nqpos
@@ -186,8 +329,9 @@ class DualUR3Env(MujocoEnv, utils.EzPickle):
             err = np.linalg.norm(delta_x)
         
         if iter_taken == max_iter:
-            warnings.warn('Max iteration limit reached! err: %f (threshold: %f), null_obj_err: %f (threshold: %f)'%(err, threshold, null_obj_val, threshold_null),
-                RuntimeWarning)
+            pass
+            # warnings.warn('Max iteration limit reached! err: %f (threshold: %f), null_obj_err: %f (threshold: %f)'%(err, threshold, null_obj_val, threshold_null),
+            #     RuntimeWarning)
         
         return q, iter_taken, err, null_obj_val
 

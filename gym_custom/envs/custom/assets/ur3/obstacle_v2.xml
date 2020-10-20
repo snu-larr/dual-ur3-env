@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<mujoco model="obstacle-v2">
+
+    <body name="obstacle_1" pos="0.35 -0.4 0.87">
+        <geom name="wall_1" type="box" pos="0 0 0" size="0.05 0.05 0.15" rgba=".6 .6 .5 1"
+            contype="1" conaffinity="1" friction="2 0.1 0.002" material="metal"/>
+    </body>
+    <body name="obstacle_2" pos="-0.35 -0.4 0.87">
+        <geom name="wall_2" type="box" pos="0 0 0" size="0.05 0.05 0.15" rgba=".6 .6 .5 1"
+            contype="1" conaffinity="1" friction="2 0.1 0.002" material="metal"/>
+    </body>
+</mujoco>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<mujoco model="place box-v4">    
+    <body name="box" pos="0. -0.48 0.73">
+        <geom rgba="1 0.3 0.3 1" type="box" contype="1" size="0.2 0.08 0.005" name="box_bottom" conaffinity="1" pos="0 0 0.001" mass="1000" friction="1 0.1 0.002" />
+        <geom rgba="1 0.3 0.3 1" type="box" contype="1" size="0.2 0.005 0.03" name="box_wall1" conaffinity="1" pos="0.0 0.08 0.032" mass="1000" friction="1 0.1 0.002" />
+        <geom rgba="1 0.3 0.3 1" type="box" contype="1" size="0.2 0.005 0.03" name="box_wall2" conaffinity="1" pos="0.0 -0.08 0.032" mass="1000" friction="1 0.1 0.002" />
+        <geom rgba="1 0.3 0.3 1" type="box" contype="1" size="0.005 0.08 0.03" name="box_wall3" conaffinity="1" pos="0.2 0 0.032" mass="1000" friction="1 0.1 0.002" />
+        <geom rgba="1 0.3 0.3 1" type="box" contype="1" size="0.005 0.08 0.03" name="box_wall4" conaffinity="1" pos="-0.2 0 0.032" mass="1000" friction="1 0.1 0.002" />
+        <site name="box_edge_1" pos="0.2 0.08 0.06" size="0.01" rgba="1 0.8 0 1"/>
+        <site name="box_edge_2" pos="0.2 -0.08 0.06" size="0.01" rgba="1 0.8 0 1"/>
+        <site name="box_edge_3" pos="-0.2 0.08 0.06" size="0.01" rgba="1 0.8 0 1"/>
+        <site name="box_edge_4" pos="-0.2 -0.08 0.06" size="0.01" rgba="1 0.8 0 1"/>
+    </body>
+</mujoco>

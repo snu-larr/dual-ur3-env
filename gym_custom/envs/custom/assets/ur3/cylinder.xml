@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<mujoco model="object cylinder">
+
+    <body name="obj" pos="0 -0.33 0.65">
+        <joint name="objjoint" type="free" limited='false' damping="0.01" armature="0"/>
+        <inertial pos="0 0 0" mass="0.5" diaginertia="1.0 1.0 1.0" /><!--to prevent rolling in init-->
+        <geom name="objGeom" type="cylinder" pos="0 0 0" euler = "0 1.57 0"
+                size="0.03 0.15" rgba="0 0 1 1"  solref="0.01 1"
+                contype="1" conaffinity="1" condim="6" friction="2 0.1 0.005"
+        /> 
+        <site name="objSite" pos = "0.13 0.0 0.0" size = "0.002" rgba="1 0 0 1"/>
+        <site name="second_objSite" pos = "-0.13 0.0 0.0" size = "0.002" rgba="0 1 0 1"/>
+        <!-- <geom name="objGeom" type="box" pos="0 0 0" density="2000" size="0.15 0.01 0.03" rgba="0 127 127 1"
+                friction="1 0.1 0.002" contype="1" conaffinity="1" condim="4"
+        />  -->
+        <!--solimp="0.99 0.99 0.01" solref="0.01 1"-->
+        <!-- Currently same as gripper's friction setting -->
+        <!-- contype="1" conaffinity="1" friction="1 0.1 0.002" condim="4" -->
+        <!--solref="0.01 1" contype="1" conaffinity="1" condim="4" friction="2 0.005 0.0001"-->
+        <!-- <site name="objSite" pos = "0.13 0.0 0.01" size = "0.002" rgba="1 0 0 1"/>
+        <site name="second_objSite" pos = "-0.13 0. 0.01" size = "0.002" rgba="0 1 0 1"/> -->
+    </body>
+</mujoco>
