@@ -273,7 +273,7 @@ class DualUR3RealEnv(gym_custom.Env):
                 'grippervel': self.interface_right.get_gripper_speed()
             },
             'left': {
-                'qpos': np.array([0]),#self.interface_left.get_joint_positions(wait=wait),
+                'qpos': self.interface_left.get_joint_positions(wait=wait), 
                 'qvel': self.interface_left.get_joint_speeds(wait=wait),
                 'gripperpos': self.interface_left.get_gripper_position(),
                 'grippervel': self.interface_left.get_gripper_speed()
