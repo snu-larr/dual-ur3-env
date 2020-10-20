@@ -116,11 +116,11 @@ class URScriptInterface(object):
     def stopl(self, *args, **kwargs):
         raise NotImplementedError()
 
-    def get_joint_positions(self):
-        return np.array(self.comm.get_actual_joint_positions())
+    def get_joint_positions(self, *args, **kwargs):
+        return np.array(self.comm.get_actual_joint_positions(*args, **kwargs))
 
-    def get_joint_speeds(self):
-        return np.array(self.comm.get_actual_joint_speeds())
+    def get_joint_speeds(self, *args, **kwargs):
+        return np.array(self.comm.get_actual_joint_speeds(*args, **kwargs))
 
     ## 2F-85 gripper
     '''

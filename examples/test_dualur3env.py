@@ -641,9 +641,10 @@ def pick_and_place(env_type='sim', render=False):
 
     print('Opening right gripper... (step 2 of 6)')
     time.sleep(1.0)
-    env.step({'right': {'open_gripper': {}}})
+    env.step({'right': {'open_gripper': {}}, 'left': {}})
+    time.sleep(3.0)
     # 2. Open right gripper
-    duration = 5.0
+    duration = 1.0
     q_right_des_vel, q_left_des_vel = np.zeros_like(q_right_des_vel), np.zeros_like(q_left_des_vel)
     start = time.time()
     for t in range(int(duration/dt)):
@@ -704,7 +705,7 @@ def pick_and_place(env_type='sim', render=False):
     finish = time.time()
     print('speedj duration: %.3f (actual) vs. %.3f (desired)'%(finish-start, duration))
     qpos_err, qvel = np.inf, np.inf
-    while qpos_err > np.deg2rad(1e-1) or qvel > np.deg2rad(1e0):
+    while qpos_err > np.deg2rad(1e-1) or qvel > np.deg2rad(3e0):
         ob, _, _, _ = env.step({
             'right': {
                 'servoj': {'q': q_right_des, 't': servoj_args['t'], 'wait': servoj_args['wait']},
@@ -734,9 +735,10 @@ def pick_and_place(env_type='sim', render=False):
 
     print('Gripping object... (step 4 of 6)')
     time.sleep(1.0)
-    env.step({'right': {'close_gripper': {}}})
+    env.step({'right': {'close_gripper': {}}, 'left': {}})
+    time.sleep(3.0)
     # 4. Grip object
-    duration = 5.0
+    duration = 1.0
     start = time.time()
     for t in range(int(duration/dt)):
         ob, _, _, _ = env.step({
@@ -808,7 +810,7 @@ def pick_and_place(env_type='sim', render=False):
     qpos_err, qvel = np.inf, np.inf
     if env_type == list_of_env_types[0]:
         env.wrapper_right.servoj_gains, env.wrapper_left.servoj_gains = {'P': 1.0, 'I': 2.5, 'D': 0.2}, {'P': 1.0, 'I': 2.5, 'D': 0.2}
-    while qpos_err > np.deg2rad(1e-1) or qvel > np.deg2rad(1e0):
+    while qpos_err > np.deg2rad(1e-1) or qvel > np.deg2rad(3e0):
         ob, _, _, _ = env.step({
             'right': {
                 'servoj': {'q': q_right_des, 't': servoj_args['t'], 'wait': servoj_args['wait']},
@@ -836,8 +838,9 @@ def pick_and_place(env_type='sim', render=False):
     print('Opening gripper... (step 6 of 6)')
     time.sleep(1.0)
     # 6. Open gripper
-    duration = 5.0
-    env.step({'right': {'open_gripper': {}}})
+    duration = 1.0
+    env.step({'right': {'open_gripper': {}}, 'left': {}})
+    time.sleep(3.0)
     for t in range(int(duration/dt)):
         obs, _, _, _ = env.step({
             'right': {
@@ -867,6 +870,7 @@ def pick_and_place(env_type='sim', render=False):
                 %(right_actuator_torque, right_bias_torque, right_constraint_torque))
             print('left arm actuator torque [Nm]: %f bias torque [Nm]: %f constraint torque [Nm]: %f'
                 %(left_actuator_torque, left_bias_torque, left_constraint_torque))
+    print('done!')
 
 def collide_deprecated():
 
@@ -1032,6 +1036,47 @@ def collide(env_type='sim', render=False):
                 %(left_actuator_torque, left_bias_torque, left_constraint_torque))
             print('    err_integ: %s'%(env.wrapper_left.ur3_err_integ))
     
+def real_env_get_obs_rate_test(wait=True):
+    env = gym_custom.make('dual-ur3-larr-real-v0',
+            host_ip_right='192.168.5.102',
+            host_ip_left='192.168.5.101',
+            rate=25
+        )
+    stime = time.time()
+    [env._get_obs(wait=wait) for _ in range(100)]
+    ftime = time.time()
+    # stats
+    # single call: 8ms (wait=True, default), <1ms (wait=False)
+    # 2 calls: 16ms (wait=True, default), <1ms (wait=False)
+    # 3 calls: 17ms (wait=True, default), <1ms (wait=False)
+    # 4 calls: 24ms (wait=True, default), <1ms (wait=False)
+    print('\r\ntime per call: %f ms'%((ftime-stime)/100*1000))
+    print('done!\r\n')
+
+def real_env_command_send_rate_test(wait=True):
+    # ~25ms (wait=True, default), ~11ms (wait=False)
+    env = gym_custom.make('dual-ur3-larr-real-v0',
+            host_ip_right='192.168.5.102',
+            host_ip_left='192.168.5.101',
+            rate=100
+        )
+    env.set_initial_joint_pos(np.deg2rad([90, -45, 135, -180, 45, 0, -90, -135, -135, 0, -45, 0]))
+    env.set_initial_gripper_pos(np.array([0.0, 0.0]))
+    env.reset()
+    command = {
+        'right': {'speedj': {'qd': np.zeros([6]), 'a': 1.0, 't': 1.0, 'wait': False}},
+        'left': {'speedj': {'qd': np.zeros([6]), 'a': 1.0, 't': 1.0, 'wait': False}}
+    }
+    stime = time.time()
+    [env.step(command, wait=wait) for _ in range(100)]
+    ftime = time.time()
+    command = {
+        'right': {'stopj': {'a': 1.0}},
+        'left': {'stopj': {'a': 1.0}}
+    }
+    env.step(command)
+    print('\r\ntime per call: %f ms'%((ftime-stime)/100*1000))
+    print('done!\r\n')
 
 
 def dscho_pick_and_place(env_type='sim', render=False):
@@ -3023,3 +3068,7 @@ if __name__ == '__main__':
     # dscho_posxyz_v5_test(render=True)
     # dscho_posxyz_single_v4_v5_test(render=True)
     # dscho_init_qpos_candidate_pickling(render=True)
+    # 3. Misc. tests
+    # real_env_get_obs_rate_test(wait=False)
+    # real_env_command_send_rate_test(wait=False)
+    # pass

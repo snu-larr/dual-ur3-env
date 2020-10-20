@@ -20,9 +20,9 @@ class UR3RealEnv(gym_custom.Env):
         self._init_gripperpos = np.zeros([1])
         self._init_grippervel = np.zeros([1])
 
-        self.action_space =  UR3RealEnv._set_action_space()
+        self.action_space =  self._set_action_space()
         obs = self._get_obs()
-        self.observation_space = UR3RealEnv._set_observation_space(obs)
+        self.observation_space = self._set_observation_space(obs)
 
         self._episode_step = None
 
@@ -103,7 +103,7 @@ class UR3RealEnv(gym_custom.Env):
         }
 
     def _get_obs(self):
-        return UR3RealEnv._dict_to_nparray(self.get_obs_dict())
+        return self._dict_to_nparray(self.get_obs_dict())
 
     @staticmethod
     def _dict_to_nparray(obs_dict):
