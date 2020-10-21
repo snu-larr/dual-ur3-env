@@ -568,6 +568,24 @@ register(
     kwargs={'xml_filename' : 'dscho_dual_ur3_obstacle_v3.xml'}
 )
 
+# Real
+register(
+    id='dscho-real-dual-ur3-v0',
+    entry_point='gym_custom.envs.real.dscho_dual_ur3_real:DSCHODualUR3PickAndPlaceRealEnv',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    # kwargs={'xml_filename' : 'dscho_dual_ur3_bar_obstacle_v1.xml'}
+)
+
+register(
+    id='dscho-real-dual-ur3-pickandplace-v0',
+    entry_point='gym_custom.envs.real.dscho_dual_ur3_real:DSCHODualUR3PickAndPlaceRealEnv',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    # kwargs={'xml_filename' : 'dscho_dual_ur3_bar_obstacle_v2.xml'}
+)
+
+
 # Algorithmic
 # ----------------------------------------
 
