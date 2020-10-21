@@ -918,10 +918,10 @@ class DSCHODualUR3PickAndPlaceRealEnv(DSCHODualUR3ObjectRealEnv):
     #     self.interface_left.move_gripper(g=self._init_gripperpos[1:])
     #     self._episode_step = 0
     #     return self._get_obs()
-
+    
     def reset_model(self):
         if prompt_yes_or_no('reset model would use movej to init qpos, where endeffector pos is \r\n right: %s \r\n left: %s \r\n?'
-            %(self.get_endeff_pos('right'), self.get_endeff_pos('left') ))) is False:
+            %(self.get_endeff_pos('right'), self.get_endeff_pos('left'))) is False:
             print('exiting program!')
             sys.exit()
         super().reset_model()
@@ -947,8 +947,8 @@ class DSCHODualUR3PickAndPlaceRealEnv(DSCHODualUR3ObjectRealEnv):
                     # 'object_qpos': self.get_obj_qpos(name='obj'),
                     # 'object_vel': self.get_obj_qvel(name='obj'),
                     # 'object_quat': self.get_obj_quat(name='obj'),
-                    'object_right_grasp_point' : self.get_obj_pos(name='obj') + np.array([0.11, 0.0, 0.0]),
-                    'object_left_grasp_point' :  self.get_obj_pos(name='obj') + np.array([-0.11, 0.0, 0.0]),
+                    'object_right_grasp_point' : self.get_obj_pos(name='obj') + self.predefined_offset_for_right_grasp,
+                    'object_left_grasp_point' :  self.get_obj_pos(name='obj') + self.predefined_offset_for_left_grasp,
                     'state_finalgoal' : self._state_finalgoal.copy(),
                     'state_goal' : self._state_goal,
                     'state_right_subgoals' : self._state_right_subgoals,
