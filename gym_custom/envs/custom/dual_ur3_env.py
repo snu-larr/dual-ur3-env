@@ -10,6 +10,8 @@ from gym_custom.envs.mujoco import MujocoEnv
 
 #dscho mod
 from gym_custom.core import Serializable
+
+# For ICRA 2021
 no_object_xmls = ['dscho_dual_ur3.xml', 'dscho_dual_ur3_obstacle_v0.xml', 'dscho_dual_ur3_obstacle_v1.xml', 'dscho_dual_ur3_obstacle_v2.xml', 'dscho_dual_ur3_obstacle_v3.xml', 'dscho_dual_ur3_obstacle_v4.xml', 'dscho_dual_ur3_obstacle_v5.xml']
 lift_xmls = ['dscho_dual_ur3_bar.xml', 'dscho_dual_ur3_bar_obstacle_v0.xml', 'dscho_dual_ur3_bar_obstacle_v1.xml', 'dscho_dual_ur3_bar_obstacle_v2.xml','dscho_dual_ur3_bar_obstacle_v3.xml','dscho_dual_ur3_bar_obstacle_v4.xml','dscho_dual_ur3_bar_obstacle_v5.xml',\
             'dscho_dual_ur3_cylinder.xml', 'dscho_dual_ur3_cylinder_obstacle_v0.xml', 'dscho_dual_ur3_cylinder_obstacle_v1.xml', 'dscho_dual_ur3_cylinder_obstacle_v2.xml', 'dscho_dual_ur3_cylinder_obstacle_v3.xml','dscho_dual_ur3_cylinder_obstacle_v4.xml','dscho_dual_ur3_cylinder_obstacle_v5.xml',\
@@ -18,6 +20,9 @@ pickandplace_xmls = ['dscho_dual_ur3_bar_pickandplace.xml', 'dscho_dual_ur3_bar_
                     'dscho_dual_ur3_cylinder_pickandplace.xml', 'dscho_dual_ur3_cylinder_pickandplace_obstacle_v0.xml', 'dscho_dual_ur3_cylinder_pickandplace_obstacle_v1.xml', 'dscho_dual_ur3_cylinder_pickandplace_obstacle_v2.xml', 'dscho_dual_ur3_cylinder_pickandplace_obstacle_v3.xml','dscho_dual_ur3_cylinder_pickandplace_obstacle_v4.xml','dscho_dual_ur3_cylinder_pickandplace_obstacle_v5.xml',\
                     ]
 stick_pull_xmls = ['dscho_dual_ur3_stick_pull.xml', 'dscho_dual_ur3_stick_pull_obstacle_v0.xml', 'dscho_dual_ur3_stick_pull_obstacle_v2.xml', 'dscho_dual_ur3_stick_pull_obstacle_v3.xml','dscho_dual_ur3_stick_pull_obstacle_v4.xml','dscho_dual_ur3_stick_pull_obstacle_v5.xml']
+
+# After ICRA 2021
+object_xmls = ['dscho_dual_ur3_object.xml']
 
 class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
 
@@ -63,7 +68,12 @@ class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
             self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [7,2] # long box(stick), pull_object
             self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, [6,2]
             self.num_objects = 2
-        
+        elif xml_filename in object_xmls:
+            self.mujoco_xml_full_path = os.path.join(os.path.dirname(__file__), 'assets/ur3/'+xml_filename)
+            self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [7] # cube object
+            self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, [6]
+            self.num_objects = 1
+            
         #self._ezpickle_init()
         self._mujocoenv_init()
         self._check_model_parameter_dimensions()

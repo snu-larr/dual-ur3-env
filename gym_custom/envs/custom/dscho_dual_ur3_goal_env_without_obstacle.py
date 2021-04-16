@@ -36,7 +36,7 @@ def colorize(string, color, bold=False, highlight=False):
 
 
 class DualWrapper(URScriptWrapper_DualUR3):
-    def __init__(self, env, q_control_type, g_control_type, multi_step, gripper_action, serializable_initialized = False, *args, **kwargs):
+    def __init__(self, env, q_control_type, g_control_type, multi_step, gripper_action, serializable_initialized = False, gripper_force_scale = 50,*args, **kwargs):
         # self._wrapped_env needs to be called first because
         # Serializable.quick_init calls getattr, on this class. And the
         # implementation of getattr (see below) calls self._wrapped_env.
@@ -51,7 +51,7 @@ class DualWrapper(URScriptWrapper_DualUR3):
         super().__init__(env, *args, **kwargs)
         self.q_control_type = q_control_type
         self.g_control_type = g_control_type
-        
+        self.gripper_force_scale = gripper_force_scale
         self.multi_step = multi_step
         self.gripper_action = gripper_action
         self.dt = self.env.dt*multi_step
@@ -100,9 +100,9 @@ class DualWrapper(URScriptWrapper_DualUR3):
         
         if self.gripper_action:
             right_ur3_action = action[:self.ur3_act_dim]
-            right_gripper_action = action[self.ur3_act_dim:self.ur3_act_dim+self.gripper_act_dim]
+            right_gripper_action = self.gripper_force_scale*action[self.ur3_act_dim:self.ur3_act_dim+self.gripper_act_dim]
             left_ur3_action = action[self.ur3_act_dim+self.gripper_act_dim:2*self.ur3_act_dim+self.gripper_act_dim]
-            left_gripper_action = action[2*self.ur3_act_dim+self.gripper_act_dim:2*self.ur3_act_dim+2*self.gripper_act_dim]
+            left_gripper_action = self.gripper_force_scale*action[2*self.ur3_act_dim+self.gripper_act_dim:2*self.ur3_act_dim+2*self.gripper_act_dim]
         else :
             right_ur3_action = action[:self.ur3_act_dim]
             right_gripper_action = np.zeros(self.gripper_act_dim)
@@ -170,7 +170,7 @@ class SingleWrapper(URScriptWrapper_DualUR3):
     not including object's qpos,qvel, gripper qpos, qvel
     '''
 
-    def __init__(self, env, q_control_type, g_control_type, multi_step, gripper_action, serializable_initialized = False, *args, **kwargs):
+    def __init__(self, env, q_control_type, g_control_type, multi_step, gripper_action, serializable_initialized = False, gripper_force_scale=50, *args, **kwargs):
         # self._wrapped_env needs to be called first because
         # Serializable.quick_init calls getattr, on this class. And the
         # implementation of getattr (see below) calls self._wrapped_env.
@@ -185,7 +185,7 @@ class SingleWrapper(URScriptWrapper_DualUR3):
         super().__init__(env, *args, **kwargs)
         self.q_control_type = q_control_type
         self.g_control_type = g_control_type
-        
+        self.gripper_force_scale = gripper_force_scale
         self.multi_step = multi_step
         self.gripper_action = gripper_action
         self.dt = self.env.dt*multi_step
@@ -230,7 +230,7 @@ class SingleWrapper(URScriptWrapper_DualUR3):
         # assume action is np.array(ur3(6)) (if gripper_action is True, then , gripper(1) dimension added )
         ur3_act = action[:self.ur3_act_dim]
         if self.gripper_action:
-            gripper_act = action[-self.gripper_act_dim:]
+            gripper_act = self.gripper_force_scale*action[-self.gripper_act_dim:]
         else :
             gripper_act = np.zeros(self.gripper_act_dim)
         
@@ -302,7 +302,8 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
                 gripper_action, 
                 serializable_initialized = False, 
                 so3_constraint='vertical_side', 
-                action_downscale=0.01, 
+                action_downscale=0.01,
+                gripper_force_scale = 50, 
                 *args, 
                 **kwargs
                 ):
@@ -323,6 +324,7 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
         
         self.ee_xyz_pos_dim = 3
         self.action_downscale = action_downscale
+        self.gripper_force_scale = gripper_force_scale
         self.null_obj_func = SO3Constraint(SO3=so3_constraint)
 
         self.multi_step = multi_step
@@ -361,8 +363,9 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
         action[:self.ee_xyz_pos_dim] = np.clip(action[:self.ee_xyz_pos_dim], -1, 1)
         action[:self.ee_xyz_pos_dim] = self.action_downscale*action[:self.ee_xyz_pos_dim]
         ur3_act = action[:self.ee_xyz_pos_dim] # delta xyz pos of ee
+        
         if self.gripper_action:
-            gripper_act = action[-self.gripper_act_dim:]
+            gripper_act = self.gripper_force_scale*action[-self.gripper_act_dim:]
         else :
             gripper_act = np.zeros(self.gripper_act_dim)
         
@@ -455,7 +458,8 @@ class EndEffectorPositionControlDualWrapper(URScriptWrapper_DualUR3):
                 gripper_action, 
                 serializable_initialized = False, 
                 so3_constraint='vertical_side', 
-                action_downscale=0.01, 
+                action_downscale=0.01,
+                gripper_force_scale = 50, 
                 *args, 
                 **kwargs
                 ):
@@ -476,6 +480,7 @@ class EndEffectorPositionControlDualWrapper(URScriptWrapper_DualUR3):
         
         self.ee_xyz_pos_dim = 3
         self.action_downscale = action_downscale
+        self.gripper_force_scale = gripper_force_scale
         self.null_obj_func = SO3Constraint(SO3=so3_constraint)
 
         self.multi_step = multi_step
@@ -519,9 +524,9 @@ class EndEffectorPositionControlDualWrapper(URScriptWrapper_DualUR3):
             action[:self.ee_xyz_pos_dim] = self.action_downscale*action[:self.ee_xyz_pos_dim]
             action[self.ee_xyz_pos_dim+self.gripper_act_dim:2*self.ee_xyz_pos_dim+self.gripper_act_dim] = self.action_downscale*action[self.ee_xyz_pos_dim+self.gripper_act_dim:2*self.ee_xyz_pos_dim+self.gripper_act_dim]
             right_ur3_act = action[:self.ee_xyz_pos_dim] # delta xyz pos of ee
-            right_gripper_act = action[self.ee_xyz_pos_dim:self.ee_xyz_pos_dim+self.gripper_act_dim]
+            right_gripper_act = self.gripper_force_scale*action[self.ee_xyz_pos_dim:self.ee_xyz_pos_dim+self.gripper_act_dim]
             left_ur3_act = action[self.ee_xyz_pos_dim+self.gripper_act_dim:2*self.ee_xyz_pos_dim+self.gripper_act_dim]
-            left_gripper_act = action[2*self.ee_xyz_pos_dim+self.gripper_act_dim:2*self.ee_xyz_pos_dim+2*self.gripper_act_dim]
+            left_gripper_act = self.gripper_force_scale*action[2*self.ee_xyz_pos_dim+self.gripper_act_dim:2*self.ee_xyz_pos_dim+2*self.gripper_act_dim]
         else :
             # down scale [-1,1] to [-0.005, 0.005]
             action= np.clip(action, -1, 1)
@@ -599,26 +604,29 @@ class DSCHODualUR3Env(DualUR3Env):
         self.save_init_params(locals())
         super().__init__(*args, **kwargs)
         # super().__init__(xml_filename, initMode, automatically_set_spaces=automatically_set_spaces)
-        default_right_qpos = np.array([[-90.0, -90.0, -90.0, -90.0, -135.0, 180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
+        
+        self.init_qpos_candidates = {}
+        # 양팔 널찍이 벌려있는 상태
+        # default_right_qpos = np.array([[-90.0, -90.0, -90.0, -90.0, -135.0, 180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
         default_left_qpos = np.array([[90.0, -90.0, 90.0, -90.0, 135.0, -180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
-        if 'obstacle_v0' in self.xml_filename :
-            self.init_qpos_candidates = joblib.load('init_qpos_obstacle-v0.pkl')
-        elif 'obstacle_v1' in self.xml_filename :
-            self.init_qpos_candidates = joblib.load('init_qpos_obstacle-v1.pkl')
-        elif 'obstacle_v2' in self.xml_filename :
-            self.init_qpos_candidates = joblib.load('init_qpos_obstacle-v2.pkl')
-        elif 'obstacle_v3' in self.xml_filename :
-            self.init_qpos_candidates = joblib.load('init_qpos_obstacle-v3.pkl')
-        elif 'obstacle_v4' in self.xml_filename :
-            self.init_qpos_candidates = joblib.load('init_qpos_obstacle-v4.pkl')
-        elif 'obstacle_v5' in self.xml_filename :
-            self.init_qpos_candidates = joblib.load('init_qpos_obstacle-v5.pkl')
-        else :
-            raise NotImplementedError
+        
+        # right : [0.2, -0.3, 0.8] left : [-0.2, -0.3, 0.8]
+        default_right_qpos = np.array([[-0.73475149, -1.91237669, -1.78802014, -1.6064106, -2.07919236,  2.16932592]])
+        # default_left_qpos = np.array([[0.73490191, -1.22867589, 1.78775333, -1.53617814, 2.07956014, -2.16994491]])
+        
+        # add default qpos configuration        
+        self.init_qpos_candidates['q_right_des'] =default_right_qpos
+        self.init_qpos_candidates['q_left_des'] = default_left_qpos
+        
+        # for push or reach
+        if self.task in ['push', 'reach']:
+            default_gripper_right_qpos = np.array([[0.70005217, 0.01419325, 0.0405478, 0.0134475, 0.74225534, 0.70005207, 0.01402114, 0.04054553, 0.01344841, 0.74224361]])
+            default_gripper_left_qpos = np.array([[0.70005217, 0.01419325, 0.0405478, 0.0134475, 0.74225534, 0.70005207, 0.01402114, 0.04054553, 0.01344841, 0.74224361]])
+            # add default qpos configuration        
+            self.init_qpos_candidates['gripper_q_right_des'] =default_gripper_right_qpos
+            self.init_qpos_candidates['gripper_q_left_des'] =default_gripper_left_qpos
 
-        # add default qpos configuration
-        self.init_qpos_candidates['q_right_des'] = np.concatenate([self.init_qpos_candidates['q_right_des'], default_right_qpos], axis = 0)
-        self.init_qpos_candidates['q_left_des'] = np.concatenate([self.init_qpos_candidates['q_left_des'], default_left_qpos], axis = 0)
+        
 
     def _get_init_qpos(self):
 
@@ -639,27 +647,21 @@ class DSCHODualUR3Env(DualUR3Env):
             # Currently for dual env test with 0th index init qpos
             q_right_des_candidates = self.init_qpos_candidates['q_right_des'] # [num_candidate, qpos dim]
             q_left_des_candidates = self.init_qpos_candidates['q_left_des']
-            if 'obstacle_v0' in self.xml_filename : # Not implemented
-                right_idx = -1
-                left_idx = -1  
-            elif 'obstacle_v1' in self.xml_filename :
-                right_idx = -1
-                left_idx = -1
-            elif 'obstacle_v2' in self.xml_filename :
-                right_idx = 0
-                left_idx = 0
-            elif 'obstacle_v3' in self.xml_filename : # Not implemented
-                right_idx = -1
-                left_idx = -1
-            elif 'obstacle_v4' in self.xml_filename :
-                right_idx = 0
-                left_idx = 0
-            elif 'obstacle_v5' in self.xml_filename :
-                right_idx = 0
-                left_idx = 0
+            
+            right_idx = 0
+            left_idx = 0
             init_qpos[0:self.ur3_nqpos] = q_right_des_candidates[right_idx]
             init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = q_left_des_candidates[left_idx]
         
+        if self.task in ['push', 'reach']: # initially, close gripper
+            gripper_q_right_des_candidates = self.init_qpos_candidates['gripper_q_right_des']
+            gripper_q_left_des_candidates = self.init_qpos_candidates['gripper_q_left_des']
+            right_idx = 0
+            left_idx = 0
+            init_qpos[self.ur3_nqpos:self.ur3_nqpos + self.gripper_nqpos] = gripper_q_right_des_candidates[right_idx]
+            init_qpos[2*self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+2*self.gripper_nqpos] = gripper_q_left_des_candidates[left_idx]
+
+
         return init_qpos
 
 
@@ -731,6 +733,7 @@ class DSCHODualUR3Env(DualUR3Env):
 
 class DSCHODualUR3ObjectEnv(DSCHODualUR3Env):
     def __init__(self, *args, **kwargs):
+        
         self.save_init_params(locals())
         super().__init__(*args, **kwargs)
         # super().__init__(xml_filename, initMode, automatically_set_spaces=automatically_set_spaces)
@@ -801,7 +804,15 @@ class DSCHODualUR3ObjectEnv(DSCHODualUR3Env):
         qvel[qvel_start_idx:qvel_start_idx+6] = 0 #object vel
         self.set_state(qpos, qvel)
 
-
+class DSCHODualUR3ObstacleEnv(DSCHODualUR3Env):
+    def __init__(self, *args, **kwargs):
+        '''
+        If obstacle exists, inherit this class
+        # NOTE : you should implement object related stuff here
+        '''
+        self.save_init_params(locals())
+        super().__init__(*args, **kwargs)
+        # super().__init__(xml_filename, initMode, automatically_set_spaces=automatically_set_spaces)
 
 class DSCHODualUR3PickAndPlaceEnv(DSCHODualUR3ObjectEnv):
 
@@ -819,6 +830,7 @@ class DSCHODualUR3PickAndPlaceEnv(DSCHODualUR3ObjectEnv):
                 *args,
                 **kwargs
                 ):
+        raise NotImplementedError
         self.save_init_params(locals())
         self.reduced_observation = reduced_observation
         self.trigonometry_observation = trigonometry_observation
@@ -1161,8 +1173,8 @@ class DSCHODualUR3PickAndPlaceEnv(DSCHODualUR3ObjectEnv):
     #        finalgoal[-3:]
     #    )
 
-#single ur3 만들고 그 하위로 reachenv만들수도
-class DSCHOSingleUR3ReachEnv(DSCHODualUR3Env):
+#single ur3 만들고 그 하위로 reachenv 만들수도
+class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
     
     # Sholud be used with URScriptWrapper
     
@@ -1171,7 +1183,6 @@ class DSCHOSingleUR3ReachEnv(DSCHODualUR3Env):
                 reduced_observation = False,
                 trigonometry_observation = True, 
                 ur3_random_init=False,
-                goal_random_init = True, 
                 full_state_goal = True,
                 reward_by_ee = False, 
                 automatically_set_spaces=False,
@@ -1179,9 +1190,13 @@ class DSCHOSingleUR3ReachEnv(DSCHODualUR3Env):
                 reward_success_criterion='ee_pos',
                 distance_threshold = 0.05,
                 initMode='vertical',
-                xml_filename = 'dscho_dual_ur3.xml',
+                xml_filename = 'dscho_dual_ur3_object.xml',
                 which_hand='right', 
                 so3_constraint ='vertical_side',
+                has_object = False,
+                block_gripper = False,
+                has_obstacle = False,
+                task = 'pickandplace',
                 *args,
                 **kwargs
                 ):
@@ -1191,12 +1206,13 @@ class DSCHOSingleUR3ReachEnv(DSCHODualUR3Env):
         self.reduced_observation = reduced_observation
         self.trigonometry_observation = trigonometry_observation
         self.fixed_goal_qvel = fixed_goal_qvel
+        self.task = task
         # for LEAP(S=G) -> modified for S!=G (20200930)
         # assert (reduced_observation and not full_state_goal) or (not reduced_observation and full_state_goal)
         assert (reduced_observation and not trigonometry_observation) or (not reduced_observation and trigonometry_observation)
         self.reward_by_ee = reward_by_ee
         #self.ur3_random_init = ur3_random_init
-        self.goal_random_init = goal_random_init
+        
         self.curr_path_length = 0
 
         if so3_constraint == 'no' or so3_constraint is None:
@@ -1208,7 +1224,15 @@ class DSCHOSingleUR3ReachEnv(DSCHODualUR3Env):
         
         self.sparse_reward = sparse_reward
         self.distance_threshold = distance_threshold
-        #self.initMode = initMode
+        
+        self.block_gripper = block_gripper
+        self.has_object = has_object
+        self.has_obstacle = has_obstacle
+
+        if has_obstacle:
+            raise NotImplementedError
+
+
         self.reward_success_criterion = reward_success_criterion
         #self.automatically_set_spaces = automatically_set_spaces
         self.which_hand = which_hand        
@@ -1236,9 +1260,6 @@ class DSCHOSingleUR3ReachEnv(DSCHODualUR3Env):
         else :
             self.obs_nqpos = 3 # ee_pos
 
-        
-        
-        
         qpos_low = -np.ones(int(self.ur3_nqpos))*2*np.pi
         qpos_high = np.ones(int(self.ur3_nqpos))*2*np.pi
         qvel_low = -np.ones(int(self.ur3_nqpos))*0.01
@@ -1246,91 +1267,37 @@ class DSCHOSingleUR3ReachEnv(DSCHODualUR3Env):
         
         self.goal_qpos_space = Box(low=qpos_low, high=qpos_high, dtype=np.float32)
         self.goal_qvel_space = Box(low=qvel_low, high=qvel_high, dtype=np.float32)
-        if 'obstacle_v1' in self.xml_filename :
-            from gym_custom.envs.custom.dscho_wall import Wall3D
-            collision_buffer = 0.1
-            self.walls = [
-                Wall3D(0.0, -0.4, 0.82, 0.4, 0.015, 0.1, collision_buffer),
-            ]
-            if self.which_hand =='right':
-                ee_low = np.array([-0.2, -0.65, 0.75])
-                ee_high = np.array([0.55, -0.2, 1.1])
-            
-            elif self.which_hand =='left':
-                ee_low = np.array([-0.55, -0.65, 0.75])
-                ee_high = np.array([0.2, -0.2, 1.1])
-            self.goal_ee_pos_space=Box(low = ee_low, high = ee_high, dtype=np.float32)
-        elif 'obstacle_v2' in self.xml_filename :
-            from gym_custom.envs.custom.dscho_wall import Wall3D
-            collision_buffer = 0.1
-            self.walls = [
-                Wall3D(0.35, -0.4, 0.87, 0.05, 0.05, 0.15, collision_buffer),
-                Wall3D(-0.35, -0.4, 0.87, 0.05, 0.05, 0.15, collision_buffer),
-            ]
-            if self.which_hand =='right':
-                ee_low = np.array([-0.2, -0.65, 0.75])
-                ee_high = np.array([0.55, -0.2, 1.1])
-            
-            elif self.which_hand =='left':
-                ee_low = np.array([-0.55, -0.65, 0.75])
-                ee_high = np.array([0.2, -0.2, 1.1])
-            self.goal_ee_pos_space=Box(low = ee_low, high = ee_high, dtype=np.float32)
-        elif 'obstacle_v4' in self.xml_filename :
-            from gym_custom.envs.custom.dscho_wall import Wall3D
-            collision_buffer = 0.1
-            self.walls = [
-                Wall3D(0.35, -0.35, 0.82, 0.03, 0.3, 0.1, collision_buffer),
-                Wall3D(-0.35, -0.35, 0.82, 0.03, 0.3, 0.1, collision_buffer),
-            ]
-            if self.which_hand =='right':
-                ee_low = np.array([-0.2, -0.6, 0.75])
-                ee_high = np.array([0.6, -0.15, 1.2])
-            
-            elif self.which_hand =='left':
-                ee_low = np.array([-0.6, -0.6, 0.75])
-                ee_high = np.array([0.2, -0.15, 1.2])
-            self.goal_ee_pos_space=Box(low = ee_low, high = ee_high, dtype=np.float32)
         
-        elif 'obstacle_v5' in self.xml_filename :
-            from gym_custom.envs.custom.dscho_wall import Wall3D
-            collision_buffer = 0.1
-            self.walls = [
-                Wall3D(0.35, -0.55, 0.97, 0.03, 0.2, 0.25, collision_buffer),
-                Wall3D(-0.35, -0.55, 0.97, 0.03, 0.2, 0.25, collision_buffer),
-            ]
-            if self.which_hand =='right':
-                ee_low = np.array([-0.2, -0.6, 0.75])
-                ee_high = np.array([0.55, -0.1, 1.1])
-            
-            elif self.which_hand =='left':
-                ee_low = np.array([-0.55, -0.6, 0.75])
-                ee_high = np.array([0.2, -0.1, 1.1])
-            self.goal_ee_pos_space=Box(low = ee_low, high = ee_high, dtype=np.float32)
+        if self.which_hand =='right': 
+            ee_low = np.array([-0.1, -0.5, 0.77])
+            ee_high = np.array([0.35, -0.2, 0.95])
         
-        else : # for obstacle v1~v3 which was not proper for current setting
-            raise NotImplementedError
-            print('Warning! : It is for v0, v3')
-            self.walls = None
-            if self.which_hand =='right': 
-                ee_low = np.array([-0.2, -0.6, 0.65])
-                ee_high = np.array([0.5, -0.18, 0.9])
-            
-            elif self.which_hand =='left':
-                ee_low = np.array([-0.5, -0.6, 0.65])
-                ee_high = np.array([0.2, -0.18, 0.9])
-            self.goal_ee_pos_space=Box(low = ee_low, high = ee_high, dtype=np.float32)
+        elif self.which_hand =='left':
+            ee_low = np.array([-0.35, -0.5, 0.77])
+            ee_high = np.array([0.1, -0.2, 0.95])
+
+        self.goal_ee_pos_space = Box(low = ee_low, high = ee_high, dtype=np.float32)
+        
+        # Currently, Set the goal obj space same sa ee pos sapce
+        if self.which_hand =='right': 
+            goal_obj_low = np.array([-0.1, -0.5, 0.77])
+            goal_obj_high = np.array([0.35, -0.2, 0.95])
+        
+        elif self.which_hand =='left':
+            goal_obj_low = np.array([-0.35, -0.5, 0.77])
+            goal_obj_high = np.array([0.1, -0.2, 0.95])
+
+        self.goal_obj_pos_space = Box(low = goal_obj_low, high = goal_obj_high, dtype=np.float32)
+        
+        # TODO : think whether xy space is ouf of range of the table
+        floor_z_height = np.array([0.73]) # xml보니 책상높이가 0.73?
+        goal_obj_floor_low = np.concatenate([goal_obj_low[:-1], floor_z_height], axis =-1)
+        goal_obj_floor_high = np.concatenate([goal_obj_high[:-1], floor_z_height], axis =-1)
+        self.goal_obj_floor_space = Box(low = goal_obj_floor_low, high = goal_obj_floor_high, dtype=np.float32)
 
 
         self._state_goal = self.sample_goal(self.full_state_goal)
         
-        # self._state_subgoals = []
-        # for i in range(2):
-        #     sitename = 'subgoal'
-        #     self._state_subgoals.append(self.data.site_xpos[self.model.site_name2id(sitename+'_'+str(i+1))].copy())
-            
-            
-        # self._state_finalgoal = self.data.site_xpos[self.model.site_name2id('finalgoal')].copy()
-        # self._state_finalgoal = self._state_goal.copy()
 
         observation, reward, done, _info = self.step(self.action_space.sample()) # goalenv는 return obs_dict
         assert not done
@@ -1345,6 +1312,7 @@ class DSCHOSingleUR3ReachEnv(DSCHODualUR3Env):
     def sample_goal(self, full_state_goal):
         # need to mod for resample if goal is inside the wall
         if full_state_goal:
+            
             t=0
             p = np.array([np.inf, np.inf, np.inf])
             # while not ((p <= self.goal_ee_pos_space.high).all() and (p >= self.goal_ee_pos_space.low).all()):
@@ -1356,12 +1324,7 @@ class DSCHOSingleUR3ReachEnv(DSCHODualUR3Env):
                 )
                 # p = self.get_endeff_pos(arm=self.which_hand) 이걸로 구하면 샘플한 qpos가 아닌 현재 qpos기준 ee나오니까 안돼!
                 R, p, _ = self.forward_kinematics_ee(goal_qpos, arm=self.which_hand)
-                if self.walls is None:
-                    if (p <= self.goal_ee_pos_space.high).all() and (p >= self.goal_ee_pos_space.low).all():
-                        break
-                else :
-                    if (p <= self.goal_ee_pos_space.high).all() and (p >= self.goal_ee_pos_space.low).all() and self._check_no_wall_collision(p):
-                        break
+                
 
                 t+=1
             print('{} hand resample num : {}'.format(self.which_hand, t))
@@ -1374,54 +1337,72 @@ class DSCHOSingleUR3ReachEnv(DSCHODualUR3Env):
 
             goal = np.concatenate([goal_qpos, goal_qvel, p], axis =-1) #[qpos, qvel, ee_pos]
         else :
-            if self.walls is None:
+            if not self.has_object: # reach
                 goal_ee_pos = np.random.uniform(
                     self.goal_ee_pos_space.low,
                     self.goal_ee_pos_space.high,
                     size=(self.goal_ee_pos_space.low.size),
                 )
                 goal = goal_ee_pos
-            else :
-                while True:
-                    goal_ee_pos = np.random.uniform(
-                        self.goal_ee_pos_space.low,
-                        self.goal_ee_pos_space.high,
-                        size=(self.goal_ee_pos_space.low.size),
-                    )
-                    goal = goal_ee_pos
-                    if self._check_no_wall_collision(goal_ee_pos):
-                        break
-                    
-            
+            else: # pick and place, push, ...
+                
+                goal_obj_pos = np.random.uniform(
+                    self.goal_obj_pos_space.low,
+                    self.goal_obj_pos_space.high,
+                    size=(self.goal_obj_pos_space.low.size),
+                )
+                if self.task in ['pickandplace']:
+                    goal = goal_obj_pos
+                elif self.task in ['push']:
+                    goal = np.concatenate([goal_obj_pos[:2], np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
+                elif self.task in ['assemble']:
+                    goal = None
+                    raise NotImplementedError
+                elif self.task in ['drawer_open']:
+                    goal = None
+                    raise NotImplementedError
+                else:
+                    raise NotImplementedError
+
         return goal
 
-    # def _check_no_wall_collision(self, position):
-    #     for wall in self.walls:
-    #         if wall.contains_point(position):
-    #             return False
-    #     return True
-    def _check_no_wall_collision(self, position):
-        if position.ndim ==1:
-            for wall in self.walls:
-                if wall.contains_point(position):
-                    return False
-            return True
-        elif position.ndim==2:
-            collision_for_each_wall = np.array([False]*position.shape[0]) #[False, False, ..] #[bs]
-            for wall in self.walls:
-                collision_for_each_wall = np.logical_or(collision_for_each_wall, wall.contains_points(position))
-            return np.logical_not(collision_for_each_wall) #[bs]
-            
 
     def reset_model(self):
         # original_ob = super().reset_model() # init qpos,qvel set_state and get_obs
         # assert not self.random_init, 'it is only for reaching env'
         # 이렇게 하면 obs에 샘플한 state_goal이 반영이 안됨. -> 밑에서 별도 설정!
         
-        self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
+        # self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
         qpos = self._get_init_qpos() + self.np_random.uniform(size=self.model.nq, low=-0.01, high=0.01)
         qvel = self.init_qvel + self.np_random.uniform(size=self.model.nv, low=-0.01, high=0.01)
+        
+        
         self.set_state(qpos, qvel)
+
+        # randomly reset the initial position of an object
+        if self.has_object:
+            if self.task in ['pickandplace', 'push']:
+                object_xpos = np.random.uniform(
+                                self.goal_obj_pos_space.low,
+                                self.goal_obj_pos_space.high,
+                                size=(self.goal_obj_pos_space.low.size),
+                            )[:2]
+                object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
+                
+                object_qpos = self.sim.data.get_joint_qpos('objjoint')
+                assert object_qpos.shape == (7,)
+                object_qpos[:3] = object_pos
+                self.sim.data.set_joint_qpos('objjoint', object_qpos)
+            else:
+                pass
+        
+        self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
+        
+        if self.has_object: # reach인 경우엔 필요x
+            while np.linalg.norm(object_xpos - self._state_goal[:2]) < 0.1:
+                self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
+
+        
         observation = self._get_obs()
 
         # observation = super().reset_model() # init qpos,qvel set_state and get_obs
@@ -1484,18 +1465,33 @@ class DSCHOSingleUR3ReachEnv(DSCHODualUR3Env):
         if self.trigonometry_observation:
             qpos = np.concatenate([np.cos(qpos), np.sin(qpos)], axis = -1)
 
-        obs = np.concatenate([qpos, qvel, ee_pos])
-        
+        if self.has_object:
+            obj_pos = self.get_obj_pos(name='obj')
+        else :
+            obj_pos = np.array([])
+
+        obs = np.concatenate([qpos, qvel, ee_pos, obj_pos])        
+        '''
+        For reference, Fetch Env's observation consist of
+        obs = np.concatenate([
+            grip_pos, object_pos.ravel(), object_rel_pos.ravel(), gripper_state, object_rot.ravel(),
+            object_velp.ravel(), object_velr.ravel(), grip_velp, gripper_vel,
+        ])        
+        '''
+
         if self.reduced_observation:
-            obs = ee_pos
+            obs = np.concatenate([ee_pos, obj_pos])
         else:
             pass
         
         if self.full_state_goal:
             achieved_goal = obs
         else :
-            achieved_goal = ee_pos
-
+            if not self.has_object: # reach
+                achieved_goal = ee_pos
+            else: # pick and place, push, ...
+                achieved_goal = obj_pos
+            
         return {
             'observation' : obs.copy(),
             'achieved_goal' : achieved_goal.copy(),
@@ -1507,6 +1503,16 @@ class DSCHOSingleUR3ReachEnv(DSCHODualUR3Env):
     def step(self, action):
         # actions of remaning arm will be garbage
         # gripper [-1,1] should be mod to
+        # assert action.shape == (14,)
+        action = action.copy()
+        right_joint_ctrl, left_joint_ctrl, right_gripper_ctrl, left_gripper_ctrl = action[:6], action[6:8], action[8:14], action[14:]
+        
+        if self.block_gripper: # close gripper
+            right_gripper_ctrl = 50*np.ones_like(right_gripper_ctrl)
+            left_gripper_ctrl = 50*np.ones_like(left_gripper_ctrl)
+
+        action = np.concatenate([right_joint_ctrl, left_joint_ctrl, right_gripper_ctrl, left_gripper_ctrl], axis =-1)            
+
         self.do_simulation(action, self.frame_skip)
         self.curr_path_length +=1
 
@@ -1647,17 +1653,131 @@ class DSCHOSingleUR3ReachEnv(DSCHODualUR3Env):
         return reward
 
 
+    # obj related
+    def get_obj_pos(self, name=None):
+        if not self.has_object:
+            raise NotImplementedError
+        if name is None:
+            return self.data.get_body_xpos('obj')
+        else :
+            return self.data.get_body_xpos(name) 
 
-class DSCHODualUR3PickAndPlaceEnvObstacle(DSCHODualUR3PickAndPlaceEnv):
-    def __init__(self, *args, **kwargs):
-        self.save_init_params(locals())
-        # xml_filename = 'dscho_dual_ur3_obstacle.xml'
-        super().__init__( *args, **kwargs)
+    def get_obj_quat(self, name=None):
+        if not self.has_object:
+            raise NotImplementedError
+        if name is None:
+            return self.data.get_body_xquat('obj')
+        else :
+            return self.data.get_body_xquat(name)
     
-class DSCHOSingleUR3ReachEnvObstacle(DSCHOSingleUR3ReachEnv):
+    def get_obj_qpos(self, name=None):
+        if not self.has_object:
+            raise NotImplementedError
+        if name is None:
+            body_idx = self.model.body_names.index('obj')
+        else :
+            body_idx = self.model.body_names.index(name)
+        jnt_idx = self.model.body_jntadr[body_idx]
+        qpos_start_idx = self.model.jnt_qposadr[jnt_idx]
+        
+        qpos = self.data.qpos.flat.copy()
+        return qpos[qpos_start_idx:qpos_start_idx+7]
+
+    def get_obj_qvel(self, name=None):
+        if not self.has_object:
+            raise NotImplementedError
+        if name is None:
+            body_idx = self.model.body_names.index('obj')
+        else :
+            body_idx = self.model.body_names.index(name)
+        jnt_idx = self.model.body_jntadr[body_idx]
+        qvel_start_idx = self.model.jnt_dofadr[jnt_idx]
+    
+        qvel = self.data.qvel.flat.copy()
+        return qvel[qvel_start_idx:qvel_start_idx+6]
+
+
+    def _set_objCOM_marker(self):
+        
+        """
+        This should be use ONLY for visualization. Use self._state_goal for
+        logging, learning, etc.
+        """
+        if not self.has_object:
+            raise NotImplementedError
+        objPos =  self.data.get_geom_xpos('objGeom')
+        self.data.site_xpos[self.model.site_name2id('objSite')] = (
+            objPos
+        )
+    
+    def _set_obj_xyz(self, pos):
+        '''
+        bodyid = mj_name2id(model, mjOBJ_BODY, name) is the index of the body with a given name
+
+        jntid = model->body_jntadr[bodyid] is the index of the first joint for that body
+
+        model->jnt_qposadr[jntid] is the first position of that joint in the system qpos vector
+
+        for indexing into qvel and qfrc, you need the dof_XXX arrays in mjModel. the first velocity index in this example is given by body_dofadr[bodyid], which equals jnt_dofadr[jntid]
+        '''
+        if not self.has_object:
+            raise NotImplementedError
+        body_idx = self.model.body_names.index('obj')
+        jnt_idx = self.model.body_jntadr[body_idx]
+        qpos_start_idx = self.model.jnt_qposadr[jnt_idx]
+        qvel_start_idx = self.model.jnt_dofadr[jnt_idx]
+        
+        qpos = self.data.qpos.flat.copy()
+        qvel = self.data.qvel.flat.copy()
+        qpos[qpos_start_idx:qpos_start_idx+3] = pos.copy() #자세는 previous에서 불변
+        qvel[qvel_start_idx:qvel_start_idx+6] = 0 #object vel
+        self.set_state(qpos, qvel)
+
+
+
+
+
+
+
+
+class DSCHOSingleUR3PickAndPlaceEnv(DSCHOSingleUR3GoalEnv):
     def __init__(self, *args, **kwargs):
         self.save_init_params(locals())
-        # xml_filename = 'dscho_dual_ur3_obstacle.xml'
-        super().__init__( *args, **kwargs)
+        super().__init__(has_object=True, block_gripper=False, task='pickandplace', *args, **kwargs)
+
+class DSCHOSingleUR3PushEnv(DSCHOSingleUR3GoalEnv):
+    def __init__(self, *args, **kwargs):
+        self.save_init_params(locals())
+        super().__init__(has_object=True, block_gripper=True, task='push',*args, **kwargs)
+
+class DSCHOSingleUR3ReachEnv(DSCHOSingleUR3GoalEnv):
+    def __init__(self, *args, **kwargs):
+        self.save_init_params(locals())
+        super().__init__(has_object=False, block_gripper=True, task='reach', *args, **kwargs)
+
+class DSCHOSingleUR3AssembleEnv(DSCHOSingleUR3GoalEnv):
+    def __init__(self, *args, **kwargs):
+        self.save_init_params(locals())
+        super().__init__(has_object=True, block_gripper=False, task='assemble', *args, **kwargs)
+
+class DSCHOSingleUR3DrawerOpenEnv(DSCHOSingleUR3GoalEnv):
+    def __init__(self, *args, **kwargs):
+        self.save_init_params(locals())
+        super().__init__(has_object=True, block_gripper=False, task='drawer_open', *args, **kwargs)
+
+
+# class DSCHODualUR3PickAndPlaceEnvObstacle(DSCHODualUR3PickAndPlaceEnv):
+#     def __init__(self, *args, **kwargs):
+#         raise NotImplementedError
+#         self.save_init_params(locals())
+#         # xml_filename = 'dscho_dual_ur3_obstacle.xml'
+#         super().__init__( *args, **kwargs)
+    
+# class DSCHOSingleUR3ReachEnvObstacle(DSCHOSingleUR3ReachEnv):
+#     def __init__(self, *args, **kwargs):
+#         raise NotImplementedError
+#         self.save_init_params(locals())
+#         # xml_filename = 'dscho_dual_ur3_obstacle.xml'
+#         super().__init__( *args, **kwargs)
         
 
