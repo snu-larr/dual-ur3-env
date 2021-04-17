@@ -1018,9 +1018,9 @@ class DSCHODualUR3PickAndPlaceEnv(DSCHODualUR3ObjectEnv):
                 return -distance
             else:
                 if success_criterion:
-                    return 1.0
-                else :
                     return 0.0
+                else :
+                    return -1.0
             
         else :
             distance = np.linalg.norm(achieved_goal - desired_goal, axis = -1)
@@ -1028,9 +1028,9 @@ class DSCHODualUR3PickAndPlaceEnv(DSCHODualUR3ObjectEnv):
                 return -distance
             else:
                 if distance < self.distance_threshold:
-                    return 1.0
-                else :
                     return 0.0
+                else :
+                    return -1.0
 
     # super's reset_model
     # def reset_model(self):
@@ -1644,9 +1644,9 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
        
         if self.sparse_reward : 
             if placingDist < self.distance_threshold:
-                reward = 1
+                reward = 0.0
             else :
-                reward = 0 
+                reward = -1.0
         else :
             reward = -placingDist
 
