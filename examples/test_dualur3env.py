@@ -3088,7 +3088,7 @@ def dscho_sinlge_ur3_object_test(env_type='sim', render=False, make_video = Fals
 
     obs = env.reset()
     
-    right_ee_pos_candidate = [np.array([0.2, -0.3, 0.8])]
+    right_ee_pos_candidate = [np.array([0.15, -0.35, 0.9])]
     from gym_custom.envs.custom.ur_utils import SO3Constraint, NoConstraint
     null_obj_func = SO3Constraint(SO3='vertical_side')
     

@@ -1282,12 +1282,12 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         
         # Currently, Set the goal obj space same sa ee pos sapce
         if self.which_hand =='right': 
-            goal_obj_low = np.array([-0.05, -0.45, 0.77])
+            goal_obj_low = np.array([0.0, -0.45, 0.77])
             goal_obj_high = np.array([0.3, -0.25, 0.95])
         
         elif self.which_hand =='left':
             goal_obj_low = np.array([-0.3, -0.45, 0.77])
-            goal_obj_high = np.array([0.05, -0.25, 0.95])
+            goal_obj_high = np.array([0.0, -0.25, 0.95])
 
         self.goal_obj_pos_space = Box(low = goal_obj_low, high = goal_obj_high, dtype=np.float32)
         
@@ -1401,9 +1401,10 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
         
         if self.has_object: # reach인 경우엔 필요x
-            while np.linalg.norm(object_xpos - self._state_goal[:2]) < 0.1:
+            while np.linalg.norm(object_pos - self._state_goal) < 0.05:
                 self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
-
+        
+        self.sim.forward()
         
         observation = self._get_obs()
 
