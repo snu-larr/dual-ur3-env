@@ -366,6 +366,7 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
         
         if self.gripper_action:
             gripper_act = self.gripper_force_scale*action[-self.gripper_act_dim:]
+            # print('gripper act : ', gripper_act)
         else :
             gripper_act = np.zeros(self.gripper_act_dim)
         
@@ -422,6 +423,7 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
         
 
         for _ in range(self.multi_step-1):
+            # print('command : ', command['right'][self.g_control_type])
             self.env.step(self.action(command)) # obs is dict)
         return self.env.step(self.action(command))
 
@@ -612,8 +614,13 @@ class DSCHODualUR3Env(DualUR3Env):
         
         # right : [0.15, -0.35, 0.9] left : [-0.2, -0.3, 0.8]
         # NOTE : 주의 ! qpos array rank is 2 !
+        # [0.2, -0.3, 0.8]
         # default_right_qpos = np.array([[-0.73475149, -1.91237669, -1.78802014, -1.6064106, -2.07919236,  2.16932592]])
-        default_right_qpos = np.array([[-0.90259643, -2.24937667, -1.82423119, -1.23998854, -2.15827838,  2.2680261 ]])
+        # [0.15, -0.35, 0.9]
+        # default_right_qpos = np.array([[-0.90259643, -2.24937667, -1.82423119, -1.23998854, -2.15827838,  2.2680261 ]])
+        # [0.15, -0.35, 0.8]
+        default_right_qpos = np.array([[-0.76263046, -2.21085609, -1.50821658, -1.57404046, -2.08100962, 2.19369591]])
+
         # default_left_qpos = np.array([[0.73490191, -1.22867589, 1.78775333, -1.53617814, 2.07956014, -2.16994491]])
         
         # add default qpos configuration        
@@ -1283,11 +1290,11 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         # Currently, Set the goal obj space same sa ee pos sapce
         if self.which_hand =='right': 
             goal_obj_low = np.array([0.0, -0.45, 0.77])
-            goal_obj_high = np.array([0.3, -0.25, 0.95])
+            goal_obj_high = np.array([0.3, -0.3, 0.95])
         
         elif self.which_hand =='left':
             goal_obj_low = np.array([-0.3, -0.45, 0.77])
-            goal_obj_high = np.array([0.0, -0.25, 0.95])
+            goal_obj_high = np.array([0.0, -0.3, 0.95])
 
         self.goal_obj_pos_space = Box(low = goal_obj_low, high = goal_obj_high, dtype=np.float32)
         
@@ -1390,7 +1397,17 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
                                 size=(self.goal_obj_pos_space.low.size),
                             )[:2]
                 object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
+                ee_pos = self.get_endeff_pos(arm=self.which_hand)
                 
+                while np.linalg.norm(object_pos - ee_pos) < 0.05:
+                    object_xpos = np.random.uniform(
+                                self.goal_obj_pos_space.low,
+                                self.goal_obj_pos_space.high,
+                                size=(self.goal_obj_pos_space.low.size),
+                            )[:2]
+                    object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
+                # print('In reset model, ee pos : {} obj pos : {}'.format(ee_pos, object_pos))
+
                 object_qpos = self.sim.data.get_joint_qpos('objjoint')
                 assert object_qpos.shape == (7,)
                 object_qpos[:3] = object_pos

@@ -3056,7 +3056,9 @@ def dscho_sinlge_ur3_object_test(env_type='sim', render=False, make_video = Fals
     # env_id = 'dscho-single-ur3-reach-v1'
 
     which_hand = 'right'
-    env = gym_custom.make(env_id, initMode = None, full_state_goal = False, sparse_reward = True, which_hand=which_hand)
+    env = gym_custom.make(env_id, initMode = None, full_state_goal = False, 
+                            reduced_observation = False, trigonometry_observation= True,
+                            sparse_reward = True, which_hand=which_hand)
     multi_step=50 # 1step : 0.1s -> 10Hz
     
     env = EndEffectorPositionControlSingleWrapper(env=env,
@@ -3069,6 +3071,7 @@ def dscho_sinlge_ur3_object_test(env_type='sim', render=False, make_video = Fals
                                                 gripper_scale_factor=gripper_scale_factor,
                                                 so3_constraint='vertical_side',
                                                 action_downscale=0.02, # Assuming tanh action, step당 최대 0.01m
+                                                gripper_force_scale=250,
                                                 )
     dt = env.dt
     print('dt : ', dt)
@@ -3088,7 +3091,21 @@ def dscho_sinlge_ur3_object_test(env_type='sim', render=False, make_video = Fals
 
     obs = env.reset()
     
-    right_ee_pos_candidate = [np.array([0.15, -0.35, 0.9])]
+    # for i in range(1): 
+    #     action = np.array([0,0,0,1])
+    #     env.step(action)
+
+    # for i in range(3): 
+    #     action = np.array([0,0,0,-1])
+    #     env.step(action)
+
+    # while True:
+    #     env.render()
+
+
+
+
+    right_ee_pos_candidate = [np.array([0.15, -0.35, 0.8])]
     from gym_custom.envs.custom.ur_utils import SO3Constraint, NoConstraint
     null_obj_func = SO3Constraint(SO3='vertical_side')
     
@@ -3098,17 +3115,20 @@ def dscho_sinlge_ur3_object_test(env_type='sim', render=False, make_video = Fals
     print('q_right_des : {}, iter_taken : {}, err : {}, null_obj : {}'.format(q_right_des, iter_taken_right, err_right, null_obj_right))
     # print('q_left_des : {}, iter_taken : {}, err : {}, null_obj : {}'.format(q_left_des, iter_taken_left, err_left, null_obj_left))
     print('goal : {}'.format(env.get_site_pos('goal')))
-    # init_qpos = env.init_qpos.copy()
+    # init_qpos = env.data.qpos.copy()
     # init_qvel = env.init_qvel.copy()
     # q_right_des_candidates =q_right_des
-    # q_left_des_candidates = q_left_des
+    # # q_left_des_candidates = q_left_des
     # init_qpos[0:env.ur3_nqpos] = q_right_des_candidates
-    # init_qpos[env.ur3_nqpos+env.gripper_nqpos:2*env.ur3_nqpos+env.gripper_nqpos] = q_left_des_candidates
+    # # init_qpos[env.ur3_nqpos+env.gripper_nqpos:2*env.ur3_nqpos+env.gripper_nqpos] = q_left_des_candidates
     # env.set_state(init_qpos, init_qvel)
     current_right_ee_pos = env.get_endeff_pos('right')
     object_pos = env.get_site_pos('objSite')
     print('right ee pos : {}, left ee pos : {} object pos : {}'.format(env.get_endeff_pos('right'), env.get_endeff_pos('left'), object_pos))
     
+    # env.step(env.action_space.sample())
+    # while True:
+    #     env.render()
 
     desired_goal =obs['desired_goal']
 
@@ -3118,7 +3138,7 @@ def dscho_sinlge_ur3_object_test(env_type='sim', render=False, make_video = Fals
     # reach
     single = True
     action_scale = 30 # 빠르게 움직이고 싶으면 action downscale or action scale조절(NOTE : action scale은 원래 학습의 영역임)
-    grip_scale = 50
+    grip_scale = 1
     for i in range(2):
         
         for t in range(int(duration/dt)):
@@ -3245,7 +3265,7 @@ if __name__ == '__main__':
     # dscho_posxyz_v5_test(render=True)
     # dscho_posxyz_single_v4_v5_test(render=True)
     # dscho_init_qpos_candidate_pickling(render=True)
-    dscho_sinlge_ur3_object_test(render=False, make_video =True)
+    dscho_sinlge_ur3_object_test(render=True, make_video =False)
     # 3. Misc. tests
     # real_env_get_obs_rate_test(wait=False)
     # real_env_command_send_rate_test(wait=False)

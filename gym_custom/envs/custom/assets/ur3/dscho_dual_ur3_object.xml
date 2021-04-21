@@ -188,10 +188,10 @@
         <motor name="left_wrist_3_joint" joint="left_wrist_3_joint" ctrlrange="-10 10" />
         
         <!--Gripper-->
-        <motor name="right_close_r" joint="right_gripper:right_fingertip:slide:control" ctrlrange="-10 50" />
-        <motor name="right_close_l" joint="right_gripper:left_fingertip:slide:control" ctrlrange="-10 50" />
-        <motor name="left_close_r" joint="left_gripper:right_fingertip:slide:control" ctrlrange="-10 50" />
-        <motor name="left_close_l" joint="left_gripper:left_fingertip:slide:control" ctrlrange="-10 50" />
+        <motor name="right_close_r" joint="right_gripper:right_fingertip:slide:control" ctrlrange="-150 250" /> <!--originally, ctrlrange="-10 50"-->
+        <motor name="right_close_l" joint="right_gripper:left_fingertip:slide:control" ctrlrange="-150 250" />
+        <motor name="left_close_r" joint="left_gripper:right_fingertip:slide:control" ctrlrange="-150 250" />
+        <motor name="left_close_l" joint="left_gripper:left_fingertip:slide:control" ctrlrange="-150 250" />
     </actuator>
 
 </mujoco>
