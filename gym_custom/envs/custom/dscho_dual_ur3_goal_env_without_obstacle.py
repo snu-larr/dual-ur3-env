@@ -1189,7 +1189,7 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
     
     def __init__(self,
                 sparse_reward = False,
-                reduced_observation = False,
+                # reduced_observation = False,
                 trigonometry_observation = True, 
                 ur3_random_init=False,
                 full_state_goal = True,
@@ -1206,19 +1206,22 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
                 block_gripper = False,
                 has_obstacle = False,
                 task = 'pickandplace',
+                observation_type='joint_q', #'ee_object_object', #'ee_object_all'
                 *args,
                 **kwargs
                 ):
         self.save_init_params(locals())
 
         self.full_state_goal = full_state_goal
-        self.reduced_observation = reduced_observation
+        # self.reduced_observation = reduced_observation
         self.trigonometry_observation = trigonometry_observation
         self.fixed_goal_qvel = fixed_goal_qvel
         self.task = task
+        self.observation_type = observation_type
         # for LEAP(S=G) -> modified for S!=G (20200930)
         # assert (reduced_observation and not full_state_goal) or (not reduced_observation and full_state_goal)
-        assert (reduced_observation and not trigonometry_observation) or (not reduced_observation and trigonometry_observation)
+        
+        # assert (reduced_observation and not trigonometry_observation) or (not reduced_observation and trigonometry_observation)
         self.reward_by_ee = reward_by_ee
         #self.ur3_random_init = ur3_random_init
         
@@ -1261,13 +1264,19 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         self.left_get_away_qpos = np.concatenate([np.array([-90.0, -90.0, 90.0, -90.0, 135.0, 0.0])*np.pi/180.0, np.zeros(self.gripper_nqpos)]) # it was self.gripper_nqpos
         self.right_get_away_qpos = np.concatenate([np.array([-90.0, -90.0, 90.0, -90.0, 135.0, 0.0])*np.pi/180.0, np.zeros(self.gripper_nqpos)])
         
-        if not self.reduced_observation:
+        # if not self.reduced_observation:
+        if self.observation_type=='joint_q':
             if self.trigonometry_observation:
                 self.obs_nqpos = self.ur3_nqpos*2
             else :
                 self.obs_nqpos = self.ur3_nqpos
-        else :
+        elif self.observation_type == 'ee_object_pos' :
+            assert not self.trigonometry_observation
             self.obs_nqpos = 3 # ee_pos
+        elif self.observation_type =='ee_object_all':
+            assert not self.trigonometry_observation
+            raise NotImplementedError
+            self.obs_nqpos = None
 
         qpos_low = -np.ones(int(self.ur3_nqpos))*2*np.pi
         qpos_high = np.ones(int(self.ur3_nqpos))*2*np.pi
@@ -1490,7 +1499,17 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         else :
             obj_pos = np.array([])
 
-        obs = np.concatenate([qpos, qvel, ee_pos, obj_pos])        
+        if self.observation_type=='joint_q':
+            obs = np.concatenate([qpos, qvel, ee_pos, obj_pos])
+        elif self.observation_type == 'ee_object_pos':
+            obs = np.concatenate([ee_pos, obj_pos])
+        elif self.observation_type == 'ee_object_all':
+            raise NotImplementedError
+            ee_vel = None
+            obj_vel = None
+            obj_rot = None
+            obs = np.concatenate([ee_pos, obj_pos])
+
         '''
         For reference, Fetch Env's observation consist of
         obs = np.concatenate([
@@ -1499,10 +1518,10 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         ])        
         '''
 
-        if self.reduced_observation:
-            obs = np.concatenate([ee_pos, obj_pos])
-        else:
-            pass
+        # if self.reduced_observation:
+        #     obs = np.concatenate([ee_pos, obj_pos])
+        # else:
+        #     pass
         
         if self.full_state_goal:
             achieved_goal = obs
