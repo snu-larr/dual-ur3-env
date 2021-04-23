@@ -350,11 +350,63 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
         assert self.gripper_act_dim==1
         self.action_space = Box(low=act_low, high=act_high, dtype=np.float32)
         print(colorize('WARNING : CHECK action space boundary : {}'.format(self.action_space), 'green', bold=True))
-        
+    
+
+    def _gripper_action_clip(self, gripper_act):
+        if self.env.which_hand=='right':
+            right_gripper_right_state = self.env.data.get_site_xpos('right_gripper:rightEndEffector')
+            right_gripper_left_state = self.env.data.get_site_xpos('right_gripper:leftEndEffector')
+            distance = np.linalg.norm(right_gripper_right_state - right_gripper_left_state, axis =-1)
+            if gripper_act > 0 : # try to close
+                if distance >0.08 and distance <=0.1:
+                    gripper_act = np.clip(gripper_act, -150, 150)
+                elif distance <= 0.08: # 0.08정도가 거의 grasping한 수준?
+                    gripper_act = np.clip(gripper_act, -20, 20)
+            else: # try to open
+                if distance >= 0.1:
+                    gripper_act = np.clip(gripper_act, -30, 30)
+            
+        elif self.env.which_hand=='left':
+            left_gripper_right_state = self.env.data.get_site_xpos('left_gripper:rightEndEffector')
+            left_gripper_left_state = self.env.data.get_site_xpos('left_gripper:leftEndEffector')
+            distance = np.linalg.norm(left_gripper_right_state - left_gripper_left_state, axis =-1)
+            if gripper_act > 0: # try to close
+                if distance >0.08 and distance <=0.1:
+                    gripper_act = np.clip(gripper_act, -150, 150)
+                elif distance <= 0.08: # 0.08정도가 거의 grasping한 수준?
+                    gripper_act = np.clip(gripper_act, -20, 20)
+            else:
+                if distance >= 0.1:
+                    gripper_act = np.clip(gripper_act, -30, 30)
+            
+        return gripper_act, distance
+
     def reset(self, **kwargs):
         # return self.env.reset(**kwargs)
-        return super().reset(**kwargs)
-
+        obs = super().reset(**kwargs)
+        if self.env.task in ['pickandplace'] and self.env.warm_start:
+            # close gripper near the object
+            # ur3_act = np.zeros(self.ee_xyz_pos_dim)            
+            for i in range(20): # enough time to succeed for grasping
+                # gripper_act = np.array([self.gripper_force_scale]) # closing action
+                # gripper_act, distance = self._gripper_action_clip(gripper_act)
+                # print('distance in wrapper reset warm start : {} gripper act : {}'.format(distance, gripper_act))
+                # action = np.concatenate([ur3_act, gripper_act], axis =-1)
+                action = np.array([0,0,0,1]) # closing action
+                obs, _, _, _ = self.step(action)
+                if self.env.which_hand=='right':
+                    right_gripper_right_state = self.env.data.get_site_xpos('right_gripper:rightEndEffector')
+                    right_gripper_left_state = self.env.data.get_site_xpos('right_gripper:leftEndEffector')
+                    distance = np.linalg.norm(right_gripper_right_state - right_gripper_left_state, axis =-1)
+                elif self.env.which_hand=='left':
+                    left_gripper_right_state = self.env.data.get_site_xpos('left_gripper:rightEndEffector')
+                    left_gripper_left_state = self.env.data.get_site_xpos('left_gripper:leftEndEffector')
+                    distance = np.linalg.norm(left_gripper_right_state - left_gripper_left_state, axis =-1)
+                print('distance in wrapper reset warm start : {} '.format(distance))
+                if distance <= 0.07: #충분히 grasp했다 판단
+                    break
+        return obs
+            
     # Wrapper 에서 multistep을 해야 제일 lowlevel에선 매 timestep마다 command 새로계산함으로써 정확도 증가되는데, 내부적으로 IK sol 쓰다보니 이런구조는 아니라 정확도 살짝 떨어질수도
     def step(self, action):
         # down scale [-1,1] to [-0.005, 0.005]
@@ -366,6 +418,15 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
         
         if self.gripper_action:
             gripper_act = self.gripper_force_scale*action[-self.gripper_act_dim:]
+            
+        
+            if self.env.block_gripper: # close gripper
+                gripper_act = 50*np.ones_like(gripper_act)
+            else:
+                # To control closing speed w.r.t. how much the gripper is closed
+                gripper_act, distance = self._gripper_action_clip(gripper_act)                    
+                print('distance in wrapper step : {} grip : {}'.format(distance, gripper_act))
+
             # print('gripper act : ', gripper_act)
         else :
             gripper_act = np.zeros(self.gripper_act_dim)
@@ -599,15 +660,12 @@ class EndEffectorPositionControlDualWrapper(URScriptWrapper_DualUR3):
         return getattr(self.env, name)
 
 
-
-
 class DSCHODualUR3Env(DualUR3Env):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, ur3_random_init_so3_constraint = 'vertical_side', *args, **kwargs):
         self.save_init_params(locals())
-        super().__init__(*args, **kwargs)
-        # super().__init__(xml_filename, initMode, automatically_set_spaces=automatically_set_spaces)
-        
         self.init_qpos_candidates = {}
+        self.ur3_random_init_so3_constraint = ur3_random_init_so3_constraint
+        self.null_obj_func = SO3Constraint(SO3=self.ur3_random_init_so3_constraint)
         # 양팔 널찍이 벌려있는 상태
         # default_right_qpos = np.array([[-90.0, -90.0, -90.0, -90.0, -135.0, 180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
         default_left_qpos = np.array([[90.0, -90.0, 90.0, -90.0, 135.0, -180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
@@ -620,14 +678,15 @@ class DSCHODualUR3Env(DualUR3Env):
         # default_right_qpos = np.array([[-0.90259643, -2.24937667, -1.82423119, -1.23998854, -2.15827838,  2.2680261 ]])
         # [0.15, -0.35, 0.8]
         default_right_qpos = np.array([[-0.76263046, -2.21085609, -1.50821658, -1.57404046, -2.08100962, 2.19369591]])
-
         # default_left_qpos = np.array([[0.73490191, -1.22867589, 1.78775333, -1.53617814, 2.07956014, -2.16994491]])
         
         # add default qpos configuration        
         self.init_qpos_candidates['q_right_des'] =default_right_qpos
         self.init_qpos_candidates['q_left_des'] = default_left_qpos
-        
-        # for push or reach
+        self.init_qpos_candidates['gripper_q_right_close'] = np.array([[0.70005217, 0.01419325, 0.0405478, 0.0134475, 0.74225534, 0.70005207, 0.01402114, 0.04054553, 0.01344841, 0.74224361]])
+        self.init_qpos_candidates['gripper_q_left_close'] = np.array([[0.70005217, 0.01419325, 0.0405478, 0.0134475, 0.74225534, 0.70005207, 0.01402114, 0.04054553, 0.01344841, 0.74224361]])
+
+        # for push or reach (closed gripper)
         if self.task in ['push', 'reach']:
             default_gripper_right_qpos = np.array([[0.70005217, 0.01419325, 0.0405478, 0.0134475, 0.74225534, 0.70005207, 0.01402114, 0.04054553, 0.01344841, 0.74224361]])
             default_gripper_left_qpos = np.array([[0.70005217, 0.01419325, 0.0405478, 0.0134475, 0.74225534, 0.70005207, 0.01402114, 0.04054553, 0.01344841, 0.74224361]])
@@ -635,22 +694,41 @@ class DSCHODualUR3Env(DualUR3Env):
             self.init_qpos_candidates['gripper_q_right_des'] =default_gripper_right_qpos
             self.init_qpos_candidates['gripper_q_left_des'] =default_gripper_left_qpos
 
+        super().__init__(*args, **kwargs)
+        
         
 
     def _get_init_qpos(self):
 
         init_qpos = self.init_qpos.copy()
-        if self.ur3_random_init:
+        if self.ur3_random_init:            
+            # randomly initilize ee pos. IK's q is default qpos (when no random init)
             q_right_des_candidates = self.init_qpos_candidates['q_right_des'] # [num_candidate, qpos dim]
             q_left_des_candidates = self.init_qpos_candidates['q_left_des']
-            
             assert q_right_des_candidates.shape[0] == q_left_des_candidates.shape[0]
 
-            num_candidates = q_right_des_candidates.shape[0]
-            right_idx = np.random.choice(num_candidates,1) 
-            left_idx = np.random.choice(num_candidates,1) 
-            init_qpos[0:self.ur3_nqpos] = q_right_des_candidates[right_idx]
-            init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = q_left_des_candidates[left_idx]
+            right_ee_random_init_low = np.array([0.0, -0.45, 0.79])
+            right_ee_random_init_high = np.array([0.3, -0.25, 0.8])
+            left_ee_random_init_low = np.array([-0.3, -0.45, 0.79])
+            left_ee_random_init_high = np.array([0.0, -0.25, 0.8])
+
+            right_ee_random_init_space = Box(low=right_ee_random_init_low, high=right_ee_random_init_high, dtype=np.float32)
+            left_ee_random_init_space = Box(low=left_ee_random_init_low, high=left_ee_random_init_high, dtype=np.float32)
+
+            right_ee_pos = right_ee_random_init_space.sample()
+            left_ee_pos = left_ee_random_init_space.sample()
+            
+            right_q_des, right_q_iter, right_err, right_null_obj_val = self.inverse_kinematics_ee(ee_pos = right_ee_pos,null_obj_func = self.null_obj_func, arm= 'right',q_init=q_right_des_candidates[0], max_iter=5)
+            left_q_des, left_q_iter, left_err, left_null_obj_val = self.inverse_kinematics_ee(ee_pos = left_ee_pos,null_obj_func = self.null_obj_func, arm= 'left',q_init=q_left_des_candidates[0], max_iter=5)
+            
+            init_qpos[0:self.ur3_nqpos] = right_q_des
+            init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = left_q_des
+
+            # num_candidates = q_right_des_candidates.shape[0]
+            # right_idx = np.random.choice(num_candidates,1) 
+            # left_idx = np.random.choice(num_candidates,1) 
+            # init_qpos[0:self.ur3_nqpos] = q_right_des_candidates[right_idx]
+            # init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = q_left_des_candidates[left_idx]
 
         else :
             # Currently for dual env test with 0th index init qpos
@@ -738,450 +816,6 @@ class DSCHODualUR3Env(DualUR3Env):
             finalgoal[-3:]
         )
 
-
-
-class DSCHODualUR3ObjectEnv(DSCHODualUR3Env):
-    def __init__(self, *args, **kwargs):
-        
-        self.save_init_params(locals())
-        super().__init__(*args, **kwargs)
-        # super().__init__(xml_filename, initMode, automatically_set_spaces=automatically_set_spaces)
-
-    def get_obj_pos(self, name=None):
-        if name is None:
-            return self.data.get_body_xpos('obj')
-        else :
-            return self.data.get_body_xpos(name) 
-
-    def get_obj_quat(self, name=None):
-        if name is None:
-            return self.data.get_body_xquat('obj')
-        else :
-            return self.data.get_body_xquat(name)
-    
-    def get_obj_qpos(self, name=None):
-        if name is None:
-            body_idx = self.model.body_names.index('obj')
-        else :
-            body_idx = self.model.body_names.index(name)
-        jnt_idx = self.model.body_jntadr[body_idx]
-        qpos_start_idx = self.model.jnt_qposadr[jnt_idx]
-        
-        qpos = self.data.qpos.flat.copy()
-        return qpos[qpos_start_idx:qpos_start_idx+7]
-
-    def get_obj_qvel(self, name=None):
-        if name is None:
-            body_idx = self.model.body_names.index('obj')
-        else :
-            body_idx = self.model.body_names.index(name)
-        jnt_idx = self.model.body_jntadr[body_idx]
-        qvel_start_idx = self.model.jnt_dofadr[jnt_idx]
-    
-        qvel = self.data.qvel.flat.copy()
-        return qvel[qvel_start_idx:qvel_start_idx+6]
-
-
-    def _set_objCOM_marker(self):
-        """
-        This should be use ONLY for visualization. Use self._state_goal for
-        logging, learning, etc.
-        """
-        objPos =  self.data.get_geom_xpos('objGeom')
-        self.data.site_xpos[self.model.site_name2id('objSite')] = (
-            objPos
-        )
-    
-    def _set_obj_xyz(self, pos):
-        '''
-        bodyid = mj_name2id(model, mjOBJ_BODY, name) is the index of the body with a given name
-
-        jntid = model->body_jntadr[bodyid] is the index of the first joint for that body
-
-        model->jnt_qposadr[jntid] is the first position of that joint in the system qpos vector
-
-        for indexing into qvel and qfrc, you need the dof_XXX arrays in mjModel. the first velocity index in this example is given by body_dofadr[bodyid], which equals jnt_dofadr[jntid]
-        '''
-        body_idx = self.model.body_names.index('obj')
-        jnt_idx = self.model.body_jntadr[body_idx]
-        qpos_start_idx = self.model.jnt_qposadr[jnt_idx]
-        qvel_start_idx = self.model.jnt_dofadr[jnt_idx]
-        
-        qpos = self.data.qpos.flat.copy()
-        qvel = self.data.qvel.flat.copy()
-        qpos[qpos_start_idx:qpos_start_idx+3] = pos.copy() #자세는 previous에서 불변
-        qvel[qvel_start_idx:qvel_start_idx+6] = 0 #object vel
-        self.set_state(qpos, qvel)
-
-class DSCHODualUR3ObstacleEnv(DSCHODualUR3Env):
-    def __init__(self, *args, **kwargs):
-        '''
-        If obstacle exists, inherit this class
-        # NOTE : you should implement object related stuff here
-        '''
-        self.save_init_params(locals())
-        super().__init__(*args, **kwargs)
-        # super().__init__(xml_filename, initMode, automatically_set_spaces=automatically_set_spaces)
-
-class DSCHODualUR3PickAndPlaceEnv(DSCHODualUR3ObjectEnv):
-
-    def __init__(self,
-                sparse_reward = False,
-                reduced_observation = False,
-                trigonometry_observation = True, 
-                ur3_random_init = False, 
-                goal_obj_random_init=False, 
-                automatically_set_spaces=False,
-                init_goal = (0.0, -0.3, 0.95),
-                distance_threshold = 0.05,
-                initMode='vertical',
-                xml_filename = 'dscho_dual_ur3.xml',
-                *args,
-                **kwargs
-                ):
-        raise NotImplementedError
-        self.save_init_params(locals())
-        self.reduced_observation = reduced_observation
-        self.trigonometry_observation = trigonometry_observation
-        
-        assert (reduced_observation and not trigonometry_observation) or (not reduced_observation and trigonometry_observation)
-        
-        self.goal_obj_random_init = goal_obj_random_init
-        self.curr_path_length = 0
-        
-        self.sparse_reward = sparse_reward
-        self.distance_threshold = distance_threshold
-        
-        self._state_goal = np.array(init_goal)
-        
-        # TODO: goal setting for multiple tasks!
-        
-        goal_low = np.array([-0.2, -0.6, 0.77])
-        goal_high = np.array([0.2, -0.2, 1.02])
-        obj_low = np.array([-0.2, -0.6, 0.769])
-        obj_high = np.array([0.2, -0.2, 0.771])
-        self.goal_and_obj_space = Box(
-            np.hstack((goal_low, obj_low)),
-            np.hstack((goal_high, obj_high)),
-        )
-        
-        super().__init__(xml_filename=xml_filename, initMode=initMode, automatically_set_spaces=automatically_set_spaces, ur3_random_init = ur3_random_init)
-
-        if 'pickandplace' in xml_filename:
-            self.place_box_center = place_box_center = self._get_placebox_center()
-            self._state_goal = place_box_center
-        else:
-            self._state_goal = self.get_site_pos('goal')
-            
-
-        if 'obstacle' in xml_filename or 'Obstacle' in xml_filename:
-            self.obstacle_exist = True
-        else :
-            self.obstacle_exist = False
-
-        
-        self._state_right_subgoals = []
-        self._state_left_subgoals = []
-        for idx, site_name in enumerate(self.model.site_names):
-            if 'right_subgoal' in site_name:
-                self._state_right_subgoals.append(self.data.site_xpos[self.model.site_name2id(site_name)].copy())
-            elif 'left_subgoal' in site_name:
-                self._state_left_subgoals.append(self.data.site_xpos[self.model.site_name2id(site_name)].copy())
-            else :
-                pass
-        # for i in range(3):
-        #     self._state_right_subgoals.append(self.data.site_xpos[self.model.site_name2id('right_subgoal_'+str(i+1))].copy())
-        #     self._state_left_subgoals.append(self.data.site_xpos[self.model.site_name2id('left_subgoal_'+str(i+1))].copy())
-        
-        self._state_finalgoal = self._state_goal.copy()            
-
-        if not automatically_set_spaces:
-            self._set_action_space()
-  
-        observation, reward, done, _info = self.step(self.action_space.sample()) # goalenv는 return obs_dict
-        assert not done
-        
-        self.observation_space = self._set_observation_space(observation)
-
-        self.obj_init_pos = self.get_obj_pos(name='obj')
-        self.obj_names = ['obj']
-
-    def step(self, action):
-        self.do_simulation(action, self.frame_skip)
-        ob = self._get_obs()
-
-        
-        info = {
-                'is_success': self._is_success(ob['achieved_goal'], self._state_goal),
-                'l2_distance_to_goal' : np.linalg.norm(ob['desired_goal']-ob['achieved_goal'], ord=2, axis = -1),
-                'l1_distance_to_goal' : np.linalg.norm(ob['desired_goal']-ob['achieved_goal'], ord=1, axis = -1),
-                'desired_goal' : ob['desired_goal'],
-                'right_ee_pos' : self.get_endeff_pos(arm='right'),
-                'left_ee_pos' : self.get_endeff_pos(arm='left'),
-                'right_agent_obs' : self.right_agent_obs,
-                'left_agent_obs' : self.left_agent_obs,
-                'object_pos': self.get_obj_pos(name='obj'),
-                'object_qpos': self.get_obj_qpos(name='obj'),
-                'object_vel': self.get_obj_qvel(name='obj'),
-                'object_quat': self.get_obj_quat(name='obj'),
-                'object_right_grasp_point' : self.get_site_pos('objSite'),
-                'object_left_grasp_point' : self.get_site_pos('second_objSite'),
-                'state_finalgoal' : self._state_finalgoal.copy(),
-                'state_goal' : self._state_goal,
-                'state_right_subgoals' : self._state_right_subgoals,
-                'state_left_subgoals' : self._state_left_subgoals,
-                'place_point' : self.get_site_pos('insertion'),
-                'place_box_center' : self._get_placebox_center(),
-                
-            }
-
-        #TODO: Should consider how to address done
-        done = True if info['is_success'] else False
-
-        self.info = copy.deepcopy(info)
-        reward = self.compute_reward(ob['achieved_goal'], self._state_goal, None)
-        self._set_goal_marker(self._state_goal)
-        self._set_subgoal_marker(self._state_right_subgoals, 'right')
-        self._set_subgoal_marker(self._state_left_subgoals, 'left')
-        self.curr_path_length +=1
-        return ob, reward, done, info
-
-    def _get_obs(self):
-        
-        right_qpos = self._get_ur3_qpos()[:self.ur3_nqpos]
-        right_qvel = self._get_ur3_qvel()[:self.ur3_nqvel]
-        right_ee_pos = self.get_endeff_pos(arm='right') # qpos idx찾아서 써야
-
-
-        left_qpos = self._get_ur3_qpos()[self.ur3_nqpos:]
-        left_qvel = self._get_ur3_qvel()[self.ur3_nqvel:]
-        left_ee_pos = self.get_endeff_pos(arm='left')
-        
-        if self.trigonometry_observation:
-            right_qpos = np.concatenate([np.cos(right_qpos), np.sin(right_qpos)], axis = -1)
-            left_qpos = np.concatenate([np.cos(left_qpos), np.sin(left_qpos)], axis = -1)
-
-        obj_pos = self.get_obj_pos(name='obj')
-
-        obs = np.concatenate([right_qpos, right_qvel, right_ee_pos, left_qpos, left_qvel, left_ee_pos, obj_pos])
-        
-        # goal까지 augment된 obs는 x. dualenv는 goal까지 관여하는건 아니니까
-        self.right_agent_obs = np.concatenate([right_qpos, right_qvel, right_ee_pos]).copy()
-        self.left_agent_obs = np.concatenate([left_qpos, left_qvel, left_ee_pos]).copy()
-        
-        if self.reduced_observation:
-            obs = np.concatenate([right_ee_pos, left_ee_pos, obj_pos])
-        else:
-            pass
-        
-        achieved_goal = obj_pos
-
-        return {
-            'observation' : obs.copy(),
-            'achieved_goal' : achieved_goal.copy(),
-            'desired_goal' : self._state_goal.copy(), 
-        }    
-    
-    def get_info(self):
-        return copy.deepcopy(self.info)
-
-    def _is_success(self, achieved_goal, desired_goal):
-        if 'pickandplace' in self.xml_filename:
-            place_box_sites = self._get_placebox_sites()
-            '''
-            3     1
-              box
-            4     2
-            '''
-            #x,y는 박스 안에 있고, z는 placebox 평면 기준 10cm이내
-            success_criterion = (place_box_sites[2][0] < achieved_goal[0] < place_box_sites[0][0]) \
-                                    *(place_box_sites[1][1] < achieved_goal[1] < place_box_sites[0][1]) \
-                                        *(place_box_sites[0][2]-0.05 < achieved_goal[2] < place_box_sites[0][2]+0.05)
-            
-            
-            
-            return success_criterion
-        else :
-            d = np.linalg.norm(achieved_goal-desired_goal, axis = -1)
-            return (d < self.distance_threshold).astype(np.float32)
-
-    def compute_reward(self, achieved_goal, desired_goal, info):
-        if 'pickandplace' in self.xml_filename:
-            place_box_sites = self._get_placebox_sites()
-            '''
-            3     1
-              box
-            4     2
-            '''
-            #x,y는 박스 안에 있고, z는 placebox 평면 기준 10cm이내
-            assert place_box_sites[2][0] < place_box_sites[0][0]
-            assert place_box_sites[1][1] < place_box_sites[0][1]
-            
-            success_criterion = (place_box_sites[2][0] < achieved_goal[0] < place_box_sites[0][0]) \
-                                    *(place_box_sites[1][1] < achieved_goal[1] < place_box_sites[0][1]) \
-                                        *(place_box_sites[0][2]-0.05 < achieved_goal[2] < place_box_sites[0][2]+0.05)
-                                        
-            distance = np.linalg.norm(achieved_goal - desired_goal, axis =-1)
-            
-            if not self.sparse_reward:
-                return -distance
-            else:
-                if success_criterion:
-                    return 0.0
-                else :
-                    return -1.0
-            
-        else :
-            distance = np.linalg.norm(achieved_goal - desired_goal, axis = -1)
-            if not self.sparse_reward:
-                return -distance
-            else:
-                if distance < self.distance_threshold:
-                    return 0.0
-                else :
-                    return -1.0
-
-    # super's reset_model
-    # def reset_model(self):
-    #     '''overridable method'''
-    #     qpos = self.init_qpos + self.np_random.uniform(size=self.model.nq, low=-0.01, high=0.01)
-    #     qvel = self.init_qvel + self.np_random.uniform(size=self.model.nv, low=-0.01, high=0.01)
-    #     self.set_state(qpos, qvel)
-    #     return self._get_obs()
-    
-        
-
-    def reset_model(self):
-        qpos = self._get_init_qpos() + self.np_random.uniform(size=self.model.nq, low=-0.01, high=0.01)
-        qvel = self.init_qvel + self.np_random.uniform(size=self.model.nv, low=-0.01, high=0.01)
-        self.set_state(qpos, qvel)
-        ob = self._get_obs()
-        ###########################
-        # ob = super().reset_model() # obs is dict because of get_obs
-        if self.goal_obj_random_init :
-            goal_pos = np.random.uniform(
-                self.goal_and_obj_space.low,
-                self.goal_and_obj_space.high,
-                size=(self.goal_and_obj_space.low.size),
-            )
-            while np.linalg.norm(goal_pos[:3] - goal_pos[-3:]) < 0.1:
-                goal_pos = np.random.uniform(
-                    self.goal_and_obj_space.low,
-                    self.goal_and_obj_space.high,
-                    size=(self.goal_and_obj_space.low.size),
-                )
-            self._state_goal = goal_pos[:3]
-            #TODO: set state_goal_quat
-            self.obj_init_pos = np.concatenate((goal_pos[-3:-1], np.array([self.obj_init_pos[-1]])))
-        self._set_goal_marker(self._state_goal)
-        self._set_subgoal_marker(self._state_right_subgoals, 'right')
-        self._set_subgoal_marker(self._state_left_subgoals, 'left')
-        
-        self._set_obj_xyz(self.obj_init_pos)
-        self.curr_path_length = 0
-        
-
-        self.info = {
-                    'is_success': self._is_success(ob['achieved_goal'], self._state_goal),
-                    'l2_distance_to_goal' : np.linalg.norm(ob['desired_goal']-ob['achieved_goal'], ord=2, axis = -1),
-                    'l1_distance_to_goal' : np.linalg.norm(ob['desired_goal']-ob['achieved_goal'], ord=1, axis = -1),
-                    'desired_goal' : ob['desired_goal'],
-                    'right_ee_pos' : self.get_endeff_pos(arm='right'),
-                    'left_ee_pos' : self.get_endeff_pos(arm='left'),
-                    'right_agent_obs' : self.right_agent_obs,
-                    'left_agent_obs' : self.left_agent_obs,
-                    'object_pos': self.get_obj_pos(name='obj'),
-                    'object_qpos': self.get_obj_qpos(name='obj'),
-                    'object_vel': self.get_obj_qvel(name='obj'),
-                    'object_quat': self.get_obj_quat(name='obj'),
-                    'object_right_grasp_point' : self.get_site_pos('objSite'),
-                    'object_left_grasp_point' : self.get_site_pos('second_objSite'),
-                    'state_finalgoal' : self._state_finalgoal.copy(),
-                    'state_goal' : self._state_goal,
-                    'state_right_subgoals' : self._state_right_subgoals,
-                    'state_left_subgoals' : self._state_left_subgoals,
-                    'place_point' : self.get_site_pos('insertion'),
-                    'place_box_center' : self._get_placebox_center(),
-                    
-                }
-
-        return ob
-
-    def set_right_subgoals(self, subgoals):
-        assert isinstance(subgoals, list)
-        self._state_right_subgoals = subgoals
-        self._set_subgoal_marker(subgoals, 'right')
-
-    def set_left_subgoals(self, subgoals):
-        assert isinstance(subgoals, list)
-        self._state_left_subgoals = subgoals
-        self._set_subgoal_marker(subgoals, 'left')
-
-    # def set_finalgoal(self, finalgoal):
-    #    self._state_finalgoal = finalgoal
-    #    self._set_finalgoal_marker(finalgoal)
-
-    def _set_subgoal_marker(self, subgoals, which_hand=None):
-        """
-        This should be use ONLY for visualization. Use self._state_goal for
-        logging, learning, etc.
-        """
-        assert isinstance(subgoals, list)
-        if which_hand =='right':
-            for idx, subgoal in enumerate(subgoals):
-                self.data.site_xpos[self.model.site_name2id('right_subgoal_'+str(idx+1))] = (
-                    subgoal[-3:]
-            )
-        elif which_hand =='left':
-            for idx, subgoal in enumerate(subgoals):
-                self.data.site_xpos[self.model.site_name2id('left_subgoal_'+str(idx+1))] = (
-                    subgoal[-3:]
-            )
-        else :
-            raise NotImplementedError
-        
-    def get_obstacle_positions(self):
-        if self.obstacle_exist:
-            obstacle_idx = np.where(['obstacle' in name for name in self.model.body_names])[0]
-            
-            obstacle_positions = []
-            for idx in obstacle_idx:
-                obstacle_name = self.model.body_names[idx]
-                obstacle_positions.append(self.data.get_body_xpos(obstacle_name))
-
-            return obstacle_positions
-            
-        else :
-            return None
-
-    def _get_placebox_sites(self):
-        placebox_sites = []
-        for idx, site_name in enumerate(self.model.site_names):
-            if 'box_edge' in site_name:
-                placebox_sites.append(self.data.site_xpos[self.model.site_name2id(site_name)].copy())
-            
-        return placebox_sites
-
-    def _get_placebox_center(self):
-        place_box_sites = self._get_placebox_sites()
-        if len(place_box_sites) ==0:
-            return None
-        else :
-            return np.mean(np.stack([site for site in place_box_sites], axis =0), axis=0) #[num site, dim] -> [dim]
-
-    # <site name="box_edge_1" pos="0.2 0.08 0.077" size="0.01" rgba="1 0.8 0 1"/>
-    #     <site name="box_edge_2" pos="0.2 -0.08 0.077" size="0.01" rgba="1 0.8 0 1"/>
-    #     <site name="box_edge_3" pos="-0.2 0.08 0.077" size="0.01" rgba="1 0.8 0 1"/>
-    #     <site name="box_edge_4" pos="-0.2 -0.08 0.077" size="0.01" rgba="1 0.8 0 1"/>
-    # def _set_finalgoal_marker(self, finalgoal):
-    #    """
-    #    This should be use ONLY for visualization. Use self._state_goal for
-    #    logging, learning, etc.
-    #    """
-    #    self.data.site_xpos[self.model.site_name2id('finalgoal')] = (
-    #        finalgoal[-3:]
-    #    )
-
 #single ur3 만들고 그 하위로 reachenv 만들수도
 class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
     
@@ -1207,6 +841,7 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
                 has_obstacle = False,
                 task = 'pickandplace',
                 observation_type='joint_q', #'ee_object_object', #'ee_object_all'
+                warm_start = False,
                 *args,
                 **kwargs
                 ):
@@ -1218,6 +853,7 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         self.fixed_goal_qvel = fixed_goal_qvel
         self.task = task
         self.observation_type = observation_type
+        self.warm_start = warm_start
         # for LEAP(S=G) -> modified for S!=G (20200930)
         # assert (reduced_observation and not full_state_goal) or (not reduced_observation and full_state_goal)
         
@@ -1386,36 +1022,44 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
 
 
     def reset_model(self):
-        # original_ob = super().reset_model() # init qpos,qvel set_state and get_obs
-        # assert not self.random_init, 'it is only for reaching env'
-        # 이렇게 하면 obs에 샘플한 state_goal이 반영이 안됨. -> 밑에서 별도 설정!
         
-        # self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
         qpos = self._get_init_qpos() + self.np_random.uniform(size=self.model.nq, low=-0.01, high=0.01)
         qvel = self.init_qvel + self.np_random.uniform(size=self.model.nv, low=-0.01, high=0.01)
         
-        
+        if self.which_hand == 'right':
+            start_p, end_p = self.ur3_nqpos+self.gripper_nqpos, 2*self.ur3_nqpos+2*self.gripper_nqpos
+            start_v, end_v = self.ur3_nqvel+self.gripper_nqvel, 2*self.ur3_nqvel+2*self.gripper_nqvel
+            qpos[start_p:end_p] = self.left_get_away_qpos
+        elif self.which_hand == 'left':
+            start_p, end_p = 0, self.ur3_nqpos+self.gripper_nqpos
+            start_v, end_v = 0, self.ur3_nqvel+self.gripper_nqvel
+            qpos[start_p:end_p] = self.right_get_away_qpos
+            
         self.set_state(qpos, qvel)
 
         # randomly reset the initial position of an object
         if self.has_object:
             if self.task in ['pickandplace', 'push']:
-                object_xpos = np.random.uniform(
-                                self.goal_obj_pos_space.low,
-                                self.goal_obj_pos_space.high,
-                                size=(self.goal_obj_pos_space.low.size),
-                            )[:2]
-                object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
                 ee_pos = self.get_endeff_pos(arm=self.which_hand)
-                
-                while np.linalg.norm(object_pos - ee_pos) < 0.05:
+                if self.warm_start : # set object pos same as ee pos
+                    object_pos = ee_pos.copy() - np.array([0.0, 0.0, 0.01]) # minus offset
+                else:
                     object_xpos = np.random.uniform(
-                                self.goal_obj_pos_space.low,
-                                self.goal_obj_pos_space.high,
-                                size=(self.goal_obj_pos_space.low.size),
-                            )[:2]
+                                    self.goal_obj_pos_space.low,
+                                    self.goal_obj_pos_space.high,
+                                    size=(self.goal_obj_pos_space.low.size),
+                                )[:2]
                     object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
-                # print('In reset model, ee pos : {} obj pos : {}'.format(ee_pos, object_pos))
+                    
+                    
+                    while np.linalg.norm(object_pos - ee_pos) < 0.05:
+                        object_xpos = np.random.uniform(
+                                    self.goal_obj_pos_space.low,
+                                    self.goal_obj_pos_space.high,
+                                    size=(self.goal_obj_pos_space.low.size),
+                                )[:2]
+                        object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
+                    # print('In reset model, ee pos : {} obj pos : {}'.format(ee_pos, object_pos))
 
                 object_qpos = self.sim.data.get_joint_qpos('objjoint')
                 assert object_qpos.shape == (7,)
@@ -1536,21 +1180,10 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
             'achieved_goal' : achieved_goal.copy(),
             'desired_goal' : self._state_goal.copy(), 
         }    
-
-        
     
     def step(self, action):
         # actions of remaning arm will be garbage
-        # gripper [-1,1] should be mod to
-        # assert action.shape == (14,)
         action = action.copy()
-        right_joint_ctrl, left_joint_ctrl, right_gripper_ctrl, left_gripper_ctrl = action[:6], action[6:8], action[8:14], action[14:]
-        
-        if self.block_gripper: # close gripper
-            right_gripper_ctrl = 50*np.ones_like(right_gripper_ctrl)
-            left_gripper_ctrl = 50*np.ones_like(left_gripper_ctrl)
-
-        action = np.concatenate([right_joint_ctrl, left_joint_ctrl, right_gripper_ctrl, left_gripper_ctrl], axis =-1)            
 
         self.do_simulation(action, self.frame_skip)
         self.curr_path_length +=1
