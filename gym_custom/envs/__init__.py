@@ -625,6 +625,43 @@ register(
     kwargs={'xml_filename' : 'dscho_dual_ur3_object.xml'}
 )
 
+# Sinlge Mocap
+register(
+    id='dscho-single-ur3-mocap-pickandplace-v1',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_mocap_env_without_obstacle:DSCHOSingleUR3PickAndPlaceEnv',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_mocap_object.xml'}
+)
+register(
+    id='dscho-single-ur3-mocap-push-v1',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_mocap_env_without_obstacle:DSCHOSingleUR3PushEnv',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_mocap_object.xml'}
+)
+register(
+    id='dscho-single-ur3-mocap-reach-v1',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_mocap_env_without_obstacle:DSCHOSingleUR3ReachEnv',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_mocap_object.xml'}
+)
+register(
+    id='dscho-single-ur3-mocap-assemble-v1',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_mocap_env_without_obstacle:DSCHOSingleUR3AssembleEnv',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_mocap_object.xml'}
+)
+register(
+    id='dscho-single-ur3-mocap-drawer-open-v1',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_mocap_env_without_obstacle:DSCHOSingleUR3DrawerOpenEnv',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    kwargs={'xml_filename' : 'dscho_dual_ur3_mocap_object.xml'}
+)
+
 # Algorithmic
 # ----------------------------------------
 

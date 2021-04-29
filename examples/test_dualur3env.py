@@ -3272,42 +3272,83 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     # env_id = 'dscho-single-ur3-pickandplace-v1'
     # env_id = 'dscho-single-ur3-push-v1'
     # env_id = 'dscho-single-ur3-reach-v1'
+    env_id = 'dscho-single-ur3-mocap-pickandplace-v1'
 
     which_hand = 'right'
     from gym_custom.envs.custom.dscho_dual_ur3_goal_mocap_env_without_obstacle import DSCHOSingleUR3PickAndPlaceEnv, MocapSingleWrapper
-    env =  DSCHOSingleUR3PickAndPlaceEnv(xml_filename = 'dscho_dual_ur3_mocap_object.xml', 
-                                        initMode = None,
-                                        automatically_set_spaces=False,
-                                        # ur3_random_init = False
-                                        )
-
-    obs = env.reset()
-    
-    next_obs, _, _, _ = env.step(env.action_space.sample())
-    
-    while True:
-        env.render()
-                            
+    env = gym_custom.make(env_id , 
+                        initMode = None, 
+                        sparse_reward = True, 
+                        which_hand=which_hand, 
+                        # ur3_random_init = False,
+                        )
+    # env =  DSCHOSingleUR3PickAndPlaceEnv(xml_filename = 'dscho_dual_ur3_mocap_object.xml', 
+    #                                     initMode = None,
+    #                                     # automatically_set_spaces=True,
+    #                                     sparse_reward = True, which_hand=which_hand,
+    #                                     # ur3_random_init = False
+    #                                     )
+        
     # env = gym_custom.make(env_id, initMode = None, full_state_goal = False, 
     #                         reduced_observation = False, trigonometry_observation= True,
     #                         sparse_reward = True, which_hand=which_hand)
-    multi_step=50 # 1step : 0.1s -> 10Hz
+    # multi_step=50 # 1step : 0.1s -> 10Hz
+    multi_step=50 # 1step : 0.002s -> 500Hz
     
-    env = EndEffectorPositionControlSingleWrapper(env=env,
-                                                q_control_type=q_control_type,
-                                                g_control_type=g_control_type,
-                                                multi_step=multi_step,
-                                                gripper_action=gripper_action,
-                                                PID_gains=PID_gains,
-                                                ur3_scale_factor=ur3_scale_factor,
-                                                gripper_scale_factor=gripper_scale_factor,
-                                                so3_constraint='vertical_side',
-                                                action_downscale=0.02, # Assuming tanh action, step당 최대 0.01m
-                                                gripper_force_scale=250,
-                                                )
+    env = MocapSingleWrapper(env=env,
+                            # q_control_type=q_control_type,
+                            # g_control_type=g_control_type,
+                            multi_step=multi_step,
+                            gripper_action=gripper_action,
+                            PID_gains=PID_gains,
+                            ur3_scale_factor=ur3_scale_factor,
+                            gripper_scale_factor=gripper_scale_factor,
+                            so3_constraint='vertical_side',
+                            action_downscale=0.04, # Assuming tanh action, step당 최대 0.01m
+                            gripper_force_scale=500,
+                            )
+    # 1 * 0.02 = maximum 0.02m per 1step
+
     dt = env.dt
+    # dt = 0.1
     print('dt : ', dt)
     
+    # obs = env.reset()
+    # # while True :
+    # #     env.render()
+    # # _, right_ee_pos, _ = env.forward_kinematics_ee(qpos_right, 'right')
+    # current_right_ee_pos = env.get_endeff_pos('right')
+    # object_pos = env.get_site_pos('objSite')
+    # print('init right ee : {} obj : {}'.format(current_right_ee_pos, object_pos))
+    
+    # for t in range(4):        
+    #     action = np.array([0.0, 0.0, 0.0, 1.0])*1
+    #     next_obs, _, _, _ = env.step(action.copy())
+    #     if render: env.render()
+    #     # TODO: get_obs_dict() takes a long time causing timing issues.
+    #     #   Is it due to Upboard's lackluster performance or some deeper
+    #     #   issues within UR Script wrppaer?
+    #     qpos_right = env._get_ur3_qpos()[:env.ur3_nqpos]
+    #     qpos_left = env._get_ur3_qpos()[env.ur3_nqpos:]
+    #     qvel_right = env._get_ur3_qvel()[:env.ur3_nqvel]
+    #     qvel_left = env._get_ur3_qvel()[env.ur3_nqvel:]
+    #     _, right_ee_pos, _ = env.forward_kinematics_ee(qpos_right, 'right')
+    #     _, left_ee_pos, _ = env.forward_kinematics_ee(qpos_left, 'left')
+    #     current_right_ee_pos = env.get_endeff_pos('right')
+    #     object_pos = env.get_site_pos('objSite')
+        
+    #     gripper_qpos_right = env._get_gripper_qpos()[:env.gripper_nqpos]
+    #     gripper_qpos_left = env._get_gripper_qpos()[env.gripper_nqpos:]
+    #     print('step : {}, right ee : {} obj : {} act : {}'.format(t, right_ee_pos, object_pos, action))
+        
+    #     obs = next_obs
+
+    # while True :
+    #     env.render()
+
+
+
+    # pick and place test
     
     if make_video:
         import os
@@ -3497,8 +3538,8 @@ if __name__ == '__main__':
     # dscho_posxyz_v5_test(render=True)
     # dscho_posxyz_single_v4_v5_test(render=True)
     # dscho_init_qpos_candidate_pickling(render=True)
-    dscho_single_ur3_object_test(render=False, make_video =True)
-    # dscho_mocap_single_ur3_object_test(render=False, make_video =False)
+    # dscho_single_ur3_object_test(render=False, make_video =True)
+    dscho_mocap_single_ur3_object_test(render=False, make_video =True)
 
 
     # 3. Misc. tests

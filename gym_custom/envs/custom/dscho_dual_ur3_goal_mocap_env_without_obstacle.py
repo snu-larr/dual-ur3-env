@@ -14,6 +14,7 @@ from gym_custom.envs.custom.ur_utils import SO3Constraint, UprightConstraint, No
 import tensorflow as tf
 import joblib
 import time
+import mujoco_py
 color2num = dict(
     gray=30,
     red=31,
@@ -35,127 +36,6 @@ def colorize(string, color, bold=False, highlight=False):
     return '\x1b[%sm%s\x1b[0m' % (';'.join(attr), string)
 
 
-class DualWrapper(URScriptWrapper_DualUR3):
-    def __init__(self, env, q_control_type, g_control_type, multi_step, gripper_action, serializable_initialized = False, gripper_force_scale = 50,*args, **kwargs):
-        # self._wrapped_env needs to be called first because
-        # Serializable.quick_init calls getattr, on this class. And the
-        # implementation of getattr (see below) calls self._wrapped_env.
-        # Without setting this first, the call to self._wrapped_env would call
-        # getattr again (since it's not set yet) and therefore loop forever.
-        self.env = env
-        # Or else serialization gets delegated to the wrapped_env. Serialize
-        # this env separately from the wrapped_env.
-        self._serializable_initialized = serializable_initialized
-        self.save_init_params(locals())
-        
-        super().__init__(env, *args, **kwargs)
-        self.q_control_type = q_control_type
-        self.g_control_type = g_control_type
-        self.gripper_force_scale = gripper_force_scale
-        self.multi_step = multi_step
-        self.gripper_action = gripper_action
-        self.dt = self.env.dt*multi_step
-
-        self.speedj_args = {'a': 5, 't': None, 'wait': None}
-        self.servoj_args = {'t': None, 'wait': None}
-
-
-        if q_control_type == 'servoj':
-            if gripper_action:
-                self.act_low = act_low = np.array([-2*np.pi,-2*np.pi,-2*np.pi,-2*np.pi,-2*np.pi,-2*np.pi, -50, -2*np.pi,-2*np.pi,-2*np.pi,-2*np.pi,-2*np.pi,-2*np.pi, -50])
-                self.act_high = act_high= np.array([2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi,  50,  2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi,  50])
-            else :
-                self.act_low = act_low = np.array([-2*np.pi,-2*np.pi,-2*np.pi,-2*np.pi,-2*np.pi,-2*np.pi])
-                self.act_high = act_high= np.array([2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi])
-        elif q_control_type == 'speedj':
-            if gripper_action:
-                self.act_low = act_low = np.array([-1,-1,-1,-1,-1,-1,-50, -1,-1,-1,-1,-1,-1,-50])
-                self.act_high = act_high= np.array([1, 1, 1, 1, 1, 1, 50,  1, 1, 1, 1, 1, 1, 50]) 
-            else :
-                self.act_low = act_low = np.array([-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1])
-                self.act_high = act_high= np.array([1, 1, 1, 1, 1, 1,  1, 1, 1, 1, 1, 1])
-        
-        self.ur3_act_dim = self.wrapper_right.ndof
-        self.gripper_act_dim = self.wrapper_right.ngripperdof
-        assert self.ur3_act_dim==6
-        assert self.gripper_act_dim==1
-        self.action_space = Box(low=act_low, high=act_high, dtype=np.float32)
-        print(colorize('WARNING : CHECK action space boundary : {}'.format(self.action_space), 'green', bold=True))
-
-    def reset(self, **kwargs):
-        # return self.env.reset(**kwargs)
-        return super().reset(**kwargs)
-        
-    def step(self, action):
-        for _ in range(self.multi_step-1):
-            self._step(action)
-        return self._step(action)
-
-    def _step(self, action): 
-        # Assume 
-        # if gripper_action is True:
-        # action is np.array(right_ur3(6), right_gripper(1), left ur3(6), left_gripper(1)) 
-        # elif gripper_action is False:
-        # action is np.array(right_ur3(6), left ur3(6)) 
-        
-        if self.gripper_action:
-            right_ur3_action = action[:self.ur3_act_dim]
-            right_gripper_action = self.gripper_force_scale*action[self.ur3_act_dim:self.ur3_act_dim+self.gripper_act_dim]
-            left_ur3_action = action[self.ur3_act_dim+self.gripper_act_dim:2*self.ur3_act_dim+self.gripper_act_dim]
-            left_gripper_action = self.gripper_force_scale*action[2*self.ur3_act_dim+self.gripper_act_dim:2*self.ur3_act_dim+2*self.gripper_act_dim]
-        else :
-            right_ur3_action = action[:self.ur3_act_dim]
-            right_gripper_action = np.zeros(self.gripper_act_dim)
-            left_ur3_action = action[self.ur3_act_dim:]
-            left_gripper_action = np.zeros(self.gripper_act_dim)
-        
-        
-        right_q_control_args, right_g_control_args = self._get_control_kwargs(self.q_control_type, self.g_control_type, right_ur3_action, right_gripper_action)
-        left_q_control_args, left_g_control_args = self._get_control_kwargs(self.q_control_type, self.g_control_type, left_ur3_action, left_gripper_action) 
-        
-        command = {
-                    'right': {
-                        self.q_control_type : right_q_control_args,
-                        self.g_control_type : right_g_control_args
-                    },
-                    'left': {
-                        self.q_control_type : left_q_control_args,
-                        self.g_control_type : left_g_control_args
-                    }
-                  }
-
-        # actions of remaning arm will be garbage
-        # gripper [-1,1] should be mod to
-        observation, reward, done, info = self.env.step(self.action(command)) # obs is dict
-
-        wrapped_obs = observation
-        wrapped_rew = reward
-        wrapped_done = done
-        wrapped_info = info
-        
-        return wrapped_obs, wrapped_rew, wrapped_done, wrapped_info
-
-    #TODO : if it is slow, you'd better use predefined dictionary format by using for loop to avoid if, elif execution per step
-    def _get_control_kwargs(self, q_control_type, g_control_type, ur3_action, gripper_action):
-
-        if q_control_type=='speedj':
-            q_control_args = copy.deepcopy(self.speedj_args)
-            q_control_args.update({'qd' : ur3_action})
-        elif q_control_type=='servoj':
-            q_control_args = copy.deepcopy(self.servoj_args)
-            q_control_args.update({'q' : ur3_action})
-        if g_control_type=='move_gripper_force':
-            g_control_args = {'gf' : gripper_action}
-        elif g_control_type=='move_gripper_position':
-            g_control_args = {'g' : gripper_action}
-        elif g_control_type=='move_gripper_velocity':
-            g_control_args = {'gd' : gripper_action}
-        
-        return q_control_args, g_control_args
-    
-    def __getattr__(self, name):
-        return getattr(self.env, name)
-        
 class DummyWrapper():
     
     def __init__(self, env):
@@ -164,140 +44,13 @@ class DummyWrapper():
     def __getattr__(self, name):
         return getattr(self.env, name)
 
-class SingleWrapper(URScriptWrapper_DualUR3):
-    '''
-    obs : only ur3 qpos, qvel, ee_pos
-    not including object's qpos,qvel, gripper qpos, qvel
-    '''
 
-    def __init__(self, env, q_control_type, g_control_type, multi_step, gripper_action, serializable_initialized = False, gripper_force_scale=50, *args, **kwargs):
-        # self._wrapped_env needs to be called first because
-        # Serializable.quick_init calls getattr, on this class. And the
-        # implementation of getattr (see below) calls self._wrapped_env.
-        # Without setting this first, the call to self._wrapped_env would call
-        # getattr again (since it's not set yet) and therefore loop forever.
-        self.env = env
-        # Or else serialization gets delegated to the wrapped_env. Serialize
-        # this env separately from the wrapped_env.
-        self._serializable_initialized = serializable_initialized
-        self.save_init_params(locals())
-
-        super().__init__(env, *args, **kwargs)
-        self.q_control_type = q_control_type
-        self.g_control_type = g_control_type
-        self.gripper_force_scale = gripper_force_scale
-        self.multi_step = multi_step
-        self.gripper_action = gripper_action
-        self.dt = self.env.dt*multi_step
-
-        self.speedj_args = {'a': 5, 't': None, 'wait': None}
-        self.servoj_args = {'t': None, 'wait': None}
-
-
-        if q_control_type == 'servoj':
-            if gripper_action:
-                self.act_low = act_low = np.array([-2*np.pi,-2*np.pi,-2*np.pi,-2*np.pi,-2*np.pi,-2*np.pi, -50])
-                self.act_high = act_high= np.array([ 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 50])
-            else :
-                self.act_low = act_low = np.array([-2*np.pi,-2*np.pi,-2*np.pi,-2*np.pi,-2*np.pi,-2*np.pi])
-                self.act_high = act_high= np.array([ 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi, 2*np.pi])
-        elif q_control_type == 'speedj':
-            if gripper_action:
-                self.act_low = act_low = np.array([-1,-1,-1,-1,-1,-1,-50])
-                self.act_high = act_high= np.array([ 1, 1, 1, 1, 1, 1, 50]) 
-            else :
-                self.act_low = act_low = np.array([-1,-1,-1,-1,-1,-1])
-                self.act_high = act_high= np.array([ 1, 1, 1, 1, 1, 1])
-        
-        self.ur3_act_dim = self.wrapper_right.ndof
-        self.gripper_act_dim = self.wrapper_right.ngripperdof
-        assert self.ur3_act_dim==6
-        assert self.gripper_act_dim==1
-        self.action_space = Box(low=act_low, high=act_high, dtype=np.float32)
-        print(colorize('WARNING : CHECK action space boundary : {}'.format(self.action_space), 'green', bold=True))
-        
-    def reset(self, **kwargs):
-        # return self.env.reset(**kwargs)
-        return super().reset(**kwargs)
-
-    # Wrapper 에서 multistep을 해야 제일 lowlevel에선 매 timestep마다 command 새로계산(정확도 증가)
-    def step(self, action):
-        for _ in range(self.multi_step-1):
-            self._step(action)
-        return self._step(action)        
-
-    def _step(self, action): 
-        # assume action is np.array(ur3(6)) (if gripper_action is True, then , gripper(1) dimension added )
-        ur3_act = action[:self.ur3_act_dim]
-        if self.gripper_action:
-            gripper_act = self.gripper_force_scale*action[-self.gripper_act_dim:]
-        else :
-            gripper_act = np.zeros(self.gripper_act_dim)
-        
-        if self.env.which_hand=='right':
-            right_ur3_action = ur3_act
-            right_gripper_action = gripper_act
-            left_ur3_action = np.zeros(self.ur3_act_dim)
-            left_gripper_action = np.zeros(self.gripper_act_dim)
-            
-        elif self.env.which_hand=='left':
-            right_ur3_action = np.zeros(self.ur3_act_dim)
-            right_gripper_action = np.zeros(self.gripper_act_dim)
-            left_ur3_action = ur3_act
-            left_gripper_action = gripper_act
-        
-        right_q_control_args, right_g_control_args = self._get_control_kwargs(self.q_control_type, self.g_control_type, right_ur3_action, right_gripper_action)
-        left_q_control_args, left_g_control_args = self._get_control_kwargs(self.q_control_type, self.g_control_type, left_ur3_action, left_gripper_action) 
-        
-        command = {
-                    'right': {
-                        self.q_control_type : right_q_control_args,
-                        self.g_control_type : right_g_control_args
-                    },
-                    'left': {
-                        self.q_control_type : left_q_control_args,
-                        self.g_control_type : left_g_control_args
-                    }
-                  }
-
-        # actions of remaning arm will be garbage
-        # gripper [-1,1] should be mod to
-        observation, reward, done, info = self.env.step(self.action(command)) # obs is dict
-
-        wrapped_obs = observation
-        wrapped_rew = reward
-        wrapped_done = done
-        wrapped_info = info
-        
-        return wrapped_obs, wrapped_rew, wrapped_done, wrapped_info
-
-    #TODO : if it is slow, you'd better use predefined dictionary format by using for loop to avoid if, elif execution per step
-    def _get_control_kwargs(self, q_control_type, g_control_type, ur3_action, gripper_action):
-
-        if q_control_type=='speedj':
-            q_control_args = copy.deepcopy(self.speedj_args)
-            q_control_args.update({'qd' : ur3_action})
-        elif q_control_type=='servoj':
-            q_control_args = copy.deepcopy(self.servoj_args)
-            q_control_args.update({'q' : ur3_action})
-        if g_control_type=='move_gripper_force':
-            g_control_args = {'gf' : gripper_action}
-        elif g_control_type=='move_gripper_position':
-            g_control_args = {'g' : gripper_action}
-        elif g_control_type=='move_gripper_velocity':
-            g_control_args = {'gd' : gripper_action}
-        
-        return q_control_args, g_control_args
-    
-    def __getattr__(self, name):
-        return getattr(self.env, name)
-
-class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
+class MocapSingleWrapper(URScriptWrapper_DualUR3):
     
     def __init__(self, 
                 env, 
-                q_control_type, 
-                g_control_type, 
+                # q_control_type, 
+                # g_control_type, 
                 multi_step, 
                 gripper_action, 
                 serializable_initialized = False, 
@@ -319,13 +72,13 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
         self.save_init_params(locals())
 
         super().__init__(env, *args, **kwargs)
-        self.q_control_type = q_control_type
-        self.g_control_type = g_control_type
+        # self.q_control_type = q_control_type
+        # self.g_control_type = g_control_type
         
         self.ee_xyz_pos_dim = 3
         self.action_downscale = action_downscale
         self.gripper_force_scale = gripper_force_scale
-        self.null_obj_func = SO3Constraint(SO3=so3_constraint)
+        # self.null_obj_func = SO3Constraint(SO3=so3_constraint)
 
         self.multi_step = multi_step
         self.gripper_action = gripper_action
@@ -333,8 +86,6 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
 
         self.speedj_args = {'a': 5, 't': None, 'wait': None}
         self.servoj_args = {'t': None, 'wait': None}
-
-
        
         if gripper_action:
             self.act_low = act_low = np.array([-1, -1, -1, -50])
@@ -344,71 +95,20 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
             self.act_high = act_high= np.array([1, 1, 1])
     
         
-        self.ur3_act_dim = self.wrapper_right.ndof
+        self.ur3_act_dim = 3 #self.wrapper_right.ndof
         self.gripper_act_dim = self.wrapper_right.ngripperdof
-        assert self.ur3_act_dim==6
+        assert self.ur3_act_dim==3
         assert self.gripper_act_dim==1
         self.action_space = Box(low=act_low, high=act_high, dtype=np.float32)
         print(colorize('WARNING : CHECK action space boundary : {}'.format(self.action_space), 'green', bold=True))
-    
-
-    def _gripper_action_clip(self, gripper_act):
-        if self.env.which_hand=='right':
-            right_gripper_right_state = self.env.data.get_site_xpos('right_gripper:rightEndEffector')
-            right_gripper_left_state = self.env.data.get_site_xpos('right_gripper:leftEndEffector')
-            distance = np.linalg.norm(right_gripper_right_state - right_gripper_left_state, axis =-1)
-            if gripper_act > 0 : # try to close
-                if distance >0.08 and distance <=0.1:
-                    gripper_act = np.clip(gripper_act, -150, 150)
-                elif distance <= 0.08: # 0.08정도가 거의 grasping한 수준?
-                    gripper_act = np.clip(gripper_act, -20, 20)
-            else: # try to open
-                if distance >= 0.1:
-                    gripper_act = np.clip(gripper_act, -30, 30)
-            
-        elif self.env.which_hand=='left':
-            left_gripper_right_state = self.env.data.get_site_xpos('left_gripper:rightEndEffector')
-            left_gripper_left_state = self.env.data.get_site_xpos('left_gripper:leftEndEffector')
-            distance = np.linalg.norm(left_gripper_right_state - left_gripper_left_state, axis =-1)
-            if gripper_act > 0: # try to close
-                if distance >0.08 and distance <=0.1:
-                    gripper_act = np.clip(gripper_act, -150, 150)
-                elif distance <= 0.08: # 0.08정도가 거의 grasping한 수준?
-                    gripper_act = np.clip(gripper_act, -20, 20)
-            else:
-                if distance >= 0.1:
-                    gripper_act = np.clip(gripper_act, -30, 30)
-            
-        return gripper_act, distance
-
+        
     def reset(self, **kwargs):
         # return self.env.reset(**kwargs)
-        obs = super().reset(**kwargs)
-        if self.env.task in ['pickandplace'] and self.env.warm_start:
-            # close gripper near the object
-            # ur3_act = np.zeros(self.ee_xyz_pos_dim)            
-            for i in range(20): # enough time to succeed for grasping
-                # gripper_act = np.array([self.gripper_force_scale]) # closing action
-                # gripper_act, distance = self._gripper_action_clip(gripper_act)
-                # print('distance in wrapper reset warm start : {} gripper act : {}'.format(distance, gripper_act))
-                # action = np.concatenate([ur3_act, gripper_act], axis =-1)
-                action = np.array([0,0,0,1]) # closing action
-                obs, _, _, _ = self.step(action)
-                if self.env.which_hand=='right':
-                    right_gripper_right_state = self.env.data.get_site_xpos('right_gripper:rightEndEffector')
-                    right_gripper_left_state = self.env.data.get_site_xpos('right_gripper:leftEndEffector')
-                    distance = np.linalg.norm(right_gripper_right_state - right_gripper_left_state, axis =-1)
-                elif self.env.which_hand=='left':
-                    left_gripper_right_state = self.env.data.get_site_xpos('left_gripper:rightEndEffector')
-                    left_gripper_left_state = self.env.data.get_site_xpos('left_gripper:leftEndEffector')
-                    distance = np.linalg.norm(left_gripper_right_state - left_gripper_left_state, axis =-1)
-                print('distance in wrapper reset warm start : {} '.format(distance))
-                if distance <= 0.07: #충분히 grasp했다 판단
-                    break
-        return obs
-            
+        return super().reset(**kwargs)
+
     # Wrapper 에서 multistep을 해야 제일 lowlevel에선 매 timestep마다 command 새로계산함으로써 정확도 증가되는데, 내부적으로 IK sol 쓰다보니 이런구조는 아니라 정확도 살짝 떨어질수도
     def step(self, action):
+        # print('action in MocapSingleWrapper : ', action)
         # down scale [-1,1] to [-0.005, 0.005]
         
         # action = copy.deepcopy(action) # 통째로 *downscale이면 문제 없는데 index로 접근할땐 array가 mutable이라 copy해줘야함, but 매 스텝마다 action을 새로 뽑는상황이라면 굳이 이렇게 안해도 상관없음. 똑같은 action으로 계속 step밟을 때나 문제가 되는거지
@@ -418,105 +118,77 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
         
         if self.gripper_action:
             gripper_act = self.gripper_force_scale*action[-self.gripper_act_dim:]
-            
-        
-            if self.env.block_gripper: # close gripper
-                gripper_act = 50*np.ones_like(gripper_act)
-            else:
-                # To control closing speed w.r.t. how much the gripper is closed
-                gripper_act, distance = self._gripper_action_clip(gripper_act)                    
-                print('distance in wrapper step : {} grip : {}'.format(distance, gripper_act))
-
             # print('gripper act : ', gripper_act)
         else :
             gripper_act = np.zeros(self.gripper_act_dim)
         
         
-        if self.env.which_hand=='right':
-            ee_pos = self.get_endeff_pos('right')
-            current_qpos = self._get_ur3_qpos()[:self.ur3_nqpos]
-            desired_ee_pos = ee_pos + ur3_act
-            start = time.time()
-            # ee_pos, null_obj_func, arm, q_init='current', threshold=0.01, threshold_null=0.001, max_iter=100, epsilon=1e-6
-            q_des, iter_taken, err, null_obj = self.inverse_kinematics_ee(desired_ee_pos, self.null_obj_func, arm='right', threshold=0.001, max_iter = 10)
-            # print('iter taken : {}, time : {}'.format(iter_taken, time.time()-start))
-            if self.q_control_type =='speedj':
-                right_ur3_action = (q_des-current_qpos)/(self.dt)
-            elif self.q_control_type =='servoj':
-                right_ur3_action = q_des
+        if self.env.which_hand=='right':            
+            right_ur3_action = ur3_act            
             right_gripper_action = gripper_act
             
             left_ur3_action = np.zeros(self.ur3_act_dim)
             left_gripper_action = np.zeros(self.gripper_act_dim)
             
         elif self.env.which_hand=='left':
-            ee_pos = self.get_endeff_pos('left')
-            current_qpos = self._get_ur3_qpos()[self.ur3_nqpos:]
-            desired_ee_pos = ee_pos + ur3_act
-            start = time.time()
-            q_des, iter_taken, err, null_obj = self.inverse_kinematics_ee(desired_ee_pos, self.null_obj_func, arm='left', threshold=0.001, max_iter = 10)
-            # print('iter taken : {}, time : {}'.format(iter_taken, time.time()-start))
-            if self.q_control_type =='speedj':
-                left_ur3_action = (q_des-current_qpos)/(self.dt)
-            elif self.q_control_type =='servoj':
-                left_ur3_action = q_des
+            left_ur3_action = ur3_act
             left_gripper_action = gripper_act
 
             right_ur3_action = np.zeros(self.ur3_act_dim)
             right_gripper_action = np.zeros(self.gripper_act_dim)
             
-            
         
-        right_q_control_args, right_g_control_args = self._get_control_kwargs(self.q_control_type, self.g_control_type, right_ur3_action, right_gripper_action)
-        left_q_control_args, left_g_control_args = self._get_control_kwargs(self.q_control_type, self.g_control_type, left_ur3_action, left_gripper_action) 
         
-        command = {
-                    'right': {
-                        self.q_control_type : right_q_control_args,
-                        self.g_control_type : right_g_control_args
-                    },
-                    'left': {
-                        self.q_control_type : left_q_control_args,
-                        self.g_control_type : left_g_control_args
-                    }
-                  }
-
+        # right_q_control_args, right_g_control_args = self._get_control_kwargs(self.q_control_type, self.g_control_type, right_ur3_action, right_gripper_action)
+        # left_q_control_args, left_g_control_args = self._get_control_kwargs(self.q_control_type, self.g_control_type, left_ur3_action, left_gripper_action) 
         
+        # command = {
+        #             'right': {
+        #                 self.q_control_type : right_q_control_args,
+        #                 self.g_control_type : right_g_control_args
+        #             },
+        #             'left': {
+        #                 self.q_control_type : left_q_control_args,
+        #                 self.g_control_type : left_g_control_args
+        #             }
+        #           }
 
-        for _ in range(self.multi_step-1):
-            # print('command : ', command['right'][self.g_control_type])
-            self.env.step(self.action(command)) # obs is dict)
-        return self.env.step(self.action(command))
-
+        # for _ in range(self.multi_step-1):
+        #     self.env.step(self.action(command)) # obs is dict)
+        # return self.env.step(self.action(command))
+        command = np.concatenate([right_ur3_action, right_gripper_action, left_ur3_action, left_gripper_action], axis =-1)
+        # for _ in range(self.multi_step-1):
+        #     # print('action in MocapSingleWrapper command : ', command)
+        #     self.env.step(command) # obs is dict)
+        return self.env.step(command)
 
     #TODO : if it is slow, you'd better use predefined dictionary format by using for loop to avoid if, elif execution per step
-    def _get_control_kwargs(self, q_control_type, g_control_type, ur3_action, gripper_action):
+    # def _get_control_kwargs(self, q_control_type, g_control_type, ur3_action, gripper_action):
 
-        if q_control_type=='speedj':
-            q_control_args = copy.deepcopy(self.speedj_args)
-            q_control_args.update({'qd' : ur3_action})
-        elif q_control_type=='servoj':
-            q_control_args = copy.deepcopy(self.servoj_args)
-            q_control_args.update({'q' : ur3_action})
-        if g_control_type=='move_gripper_force':
-            g_control_args = {'gf' : gripper_action}
-        elif g_control_type=='move_gripper_position':
-            g_control_args = {'g' : gripper_action}
-        elif g_control_type=='move_gripper_velocity':
-            g_control_args = {'gd' : gripper_action}
+    #     if q_control_type=='speedj':
+    #         q_control_args = copy.deepcopy(self.speedj_args)
+    #         q_control_args.update({'qd' : ur3_action})
+    #     elif q_control_type=='servoj':
+    #         q_control_args = copy.deepcopy(self.servoj_args)
+    #         q_control_args.update({'q' : ur3_action})
+    #     if g_control_type=='move_gripper_force':
+    #         g_control_args = {'gf' : gripper_action}
+    #     elif g_control_type=='move_gripper_position':
+    #         g_control_args = {'g' : gripper_action}
+    #     elif g_control_type=='move_gripper_velocity':
+    #         g_control_args = {'gd' : gripper_action}
         
-        return q_control_args, g_control_args
+    #     return q_control_args, g_control_args
     
     def __getattr__(self, name):
         return getattr(self.env, name)
 
-
-class EndEffectorPositionControlDualWrapper(URScriptWrapper_DualUR3):
+class MocapDualWrapper(URScriptWrapper_DualUR3):
     
     def __init__(self,
                 env, 
-                q_control_type, 
-                g_control_type, 
+                # q_control_type, 
+                # g_control_type, 
                 multi_step, 
                 gripper_action, 
                 serializable_initialized = False, 
@@ -538,13 +210,13 @@ class EndEffectorPositionControlDualWrapper(URScriptWrapper_DualUR3):
         self.save_init_params(locals())
 
         super().__init__(env, *args, **kwargs)
-        self.q_control_type = q_control_type
-        self.g_control_type = g_control_type
+        # self.q_control_type = q_control_type
+        # self.g_control_type = g_control_type
         
         self.ee_xyz_pos_dim = 3
         self.action_downscale = action_downscale
         self.gripper_force_scale = gripper_force_scale
-        self.null_obj_func = SO3Constraint(SO3=so3_constraint)
+        # self.null_obj_func = SO3Constraint(SO3=so3_constraint)
 
         self.multi_step = multi_step
         self.gripper_action = gripper_action
@@ -561,7 +233,7 @@ class EndEffectorPositionControlDualWrapper(URScriptWrapper_DualUR3):
             self.act_high = act_high= np.array([1, 1, 1, 1, 1, 1])
     
         
-        self.ur3_act_dim = self.wrapper_right.ndof
+        self.ur3_act_dim = 3 #self.wrapper_right.ndof
         self.gripper_act_dim = self.wrapper_right.ngripperdof
         assert self.ur3_act_dim==6
         assert self.gripper_act_dim==1
@@ -599,73 +271,63 @@ class EndEffectorPositionControlDualWrapper(URScriptWrapper_DualUR3):
             left_ur3_act = action[self.ee_xyz_pos_dim:]
             left_gripper_act = np.zeros(self.gripper_act_dim)
         
-        right_ee_pos = self.get_endeff_pos('right')
-        left_ee_pos = self.get_endeff_pos('left')
-        right_current_qpos = self._get_ur3_qpos()[:self.ur3_nqpos]
-        left_current_qpos = self._get_ur3_qpos()[self.ur3_nqpos:]
-        right_desired_ee_pos = right_ee_pos + right_ur3_act
-        left_desired_ee_pos = left_ee_pos + left_ur3_act
-        start = time.time()
-        # ee_pos, null_obj_func, arm, q_init='current', threshold=0.01, threshold_null=0.001, max_iter=100, epsilon=1e-6
-        right_q_des, right_iter_taken, right_err, right_null_obj = self.inverse_kinematics_ee(right_desired_ee_pos, self.null_obj_func, arm='right', threshold=0.001, max_iter = 10)
-        left_q_des, left_iter_taken, left_err, left_null_obj = self.inverse_kinematics_ee(left_desired_ee_pos, self.null_obj_func, arm='left', threshold=0.001, max_iter = 10)
-        # print('right_iter taken : {}, left_iter taken : {}, time : {}'.format(right_iter_taken, left_iter_taken, time.time()-start))
-        if self.q_control_type =='speedj':
-            right_ur3_action = (right_q_des-right_current_qpos)/(self.dt)
-            left_ur3_action = (left_q_des-left_current_qpos)/(self.dt)
-        elif self.q_control_type =='servoj':
-            right_ur3_action = right_q_des
-            left_ur3_action = left_q_des
+        
+        right_ur3_action = right_ur3_act
+        left_ur3_action = left_ur3_act
+        
         right_gripper_action = right_gripper_act
         left_gripper_action = left_gripper_act
         
-        right_q_control_args, right_g_control_args = self._get_control_kwargs(self.q_control_type, self.g_control_type, right_ur3_action, right_gripper_action)
-        left_q_control_args, left_g_control_args = self._get_control_kwargs(self.q_control_type, self.g_control_type, left_ur3_action, left_gripper_action) 
+        # right_q_control_args, right_g_control_args = self._get_control_kwargs(self.q_control_type, self.g_control_type, right_ur3_action, right_gripper_action)
+        # left_q_control_args, left_g_control_args = self._get_control_kwargs(self.q_control_type, self.g_control_type, left_ur3_action, left_gripper_action) 
         
-        command = {
-                    'right': {
-                        self.q_control_type : right_q_control_args,
-                        self.g_control_type : right_g_control_args
-                    },
-                    'left': {
-                        self.q_control_type : left_q_control_args,
-                        self.g_control_type : left_g_control_args
-                    }
-                  }
+        # command = {
+        #             'right': {
+        #                 self.q_control_type : right_q_control_args,
+        #                 self.g_control_type : right_g_control_args
+        #             },
+        #             'left': {
+        #                 self.q_control_type : left_q_control_args,
+        #                 self.g_control_type : left_g_control_args
+        #             }
+        #           }
 
+        # for _ in range(self.multi_step-1):
+        #     self.env.step(self.action(command)) # obs is dict)
+        # return self.env.step(self.action(command))
+        
+        command = np.concatenate([right_ur3_action, right_gripper_action, left_ur3_action, left_gripper_action], axis =-1)
         for _ in range(self.multi_step-1):
-            self.env.step(self.action(command)) # obs is dict)
-        return self.env.step(self.action(command))
-
+            self.env.step(command)
+        return self.env.step(command)
 
     #TODO : if it is slow, you'd better use predefined dictionary format by using for loop to avoid if, elif execution per step
-    def _get_control_kwargs(self, q_control_type, g_control_type, ur3_action, gripper_action):
+    # def _get_control_kwargs(self, q_control_type, g_control_type, ur3_action, gripper_action):
 
-        if q_control_type=='speedj':
-            q_control_args = copy.deepcopy(self.speedj_args)
-            q_control_args.update({'qd' : ur3_action})
-        elif q_control_type=='servoj':
-            q_control_args = copy.deepcopy(self.servoj_args)
-            q_control_args.update({'q' : ur3_action})
-        if g_control_type=='move_gripper_force':
-            g_control_args = {'gf' : gripper_action}
-        elif g_control_type=='move_gripper_position':
-            g_control_args = {'g' : gripper_action}
-        elif g_control_type=='move_gripper_velocity':
-            g_control_args = {'gd' : gripper_action}
+    #     if q_control_type=='speedj':
+    #         q_control_args = copy.deepcopy(self.speedj_args)
+    #         q_control_args.update({'qd' : ur3_action})
+    #     elif q_control_type=='servoj':
+    #         q_control_args = copy.deepcopy(self.servoj_args)
+    #         q_control_args.update({'q' : ur3_action})
+    #     if g_control_type=='move_gripper_force':
+    #         g_control_args = {'gf' : gripper_action}
+    #     elif g_control_type=='move_gripper_position':
+    #         g_control_args = {'g' : gripper_action}
+    #     elif g_control_type=='move_gripper_velocity':
+    #         g_control_args = {'gd' : gripper_action}
         
-        return q_control_args, g_control_args
+    #     return q_control_args, g_control_args
     
     def __getattr__(self, name):
         return getattr(self.env, name)
 
 
-class DSCHODualUR3Env(DualUR3Env):
-    def __init__(self, ur3_random_init_so3_constraint = 'vertical_side', *args, **kwargs):
+
+class DSCHODualUR3MocapEnv(DualUR3Env):
+    def __init__(self, *args, **kwargs):
         self.save_init_params(locals())
         self.init_qpos_candidates = {}
-        self.ur3_random_init_so3_constraint = ur3_random_init_so3_constraint
-        self.null_obj_func = SO3Constraint(SO3=self.ur3_random_init_so3_constraint)
         # 양팔 널찍이 벌려있는 상태
         # default_right_qpos = np.array([[-90.0, -90.0, -90.0, -90.0, -135.0, 180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
         default_left_qpos = np.array([[90.0, -90.0, 90.0, -90.0, 135.0, -180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
@@ -683,9 +345,7 @@ class DSCHODualUR3Env(DualUR3Env):
         # add default qpos configuration        
         self.init_qpos_candidates['q_right_des'] =default_right_qpos
         self.init_qpos_candidates['q_left_des'] = default_left_qpos
-        self.init_qpos_candidates['gripper_q_right_close'] = np.array([[0.70005217, 0.01419325, 0.0405478, 0.0134475, 0.74225534, 0.70005207, 0.01402114, 0.04054553, 0.01344841, 0.74224361]])
-        self.init_qpos_candidates['gripper_q_left_close'] = np.array([[0.70005217, 0.01419325, 0.0405478, 0.0134475, 0.74225534, 0.70005207, 0.01402114, 0.04054553, 0.01344841, 0.74224361]])
-
+        
         # for push or reach (closed gripper)
         if self.task in ['push', 'reach']:
             default_gripper_right_qpos = np.array([[0.70005217, 0.01419325, 0.0405478, 0.0134475, 0.74225534, 0.70005207, 0.01402114, 0.04054553, 0.01344841, 0.74224361]])
@@ -695,40 +355,24 @@ class DSCHODualUR3Env(DualUR3Env):
             self.init_qpos_candidates['gripper_q_left_des'] =default_gripper_left_qpos
 
         super().__init__(*args, **kwargs)
+        # super().__init__(xml_filename, initMode, automatically_set_spaces=automatically_set_spaces)
         
         
 
     def _get_init_qpos(self):
 
         init_qpos = self.init_qpos.copy()
-        if self.ur3_random_init:            
-            # randomly initilize ee pos. IK's q is default qpos (when no random init)
+        if self.ur3_random_init:
             q_right_des_candidates = self.init_qpos_candidates['q_right_des'] # [num_candidate, qpos dim]
             q_left_des_candidates = self.init_qpos_candidates['q_left_des']
+            
             assert q_right_des_candidates.shape[0] == q_left_des_candidates.shape[0]
 
-            right_ee_random_init_low = np.array([0.0, -0.45, 0.79])
-            right_ee_random_init_high = np.array([0.3, -0.25, 0.8])
-            left_ee_random_init_low = np.array([-0.3, -0.45, 0.79])
-            left_ee_random_init_high = np.array([0.0, -0.25, 0.8])
-
-            right_ee_random_init_space = Box(low=right_ee_random_init_low, high=right_ee_random_init_high, dtype=np.float32)
-            left_ee_random_init_space = Box(low=left_ee_random_init_low, high=left_ee_random_init_high, dtype=np.float32)
-
-            right_ee_pos = right_ee_random_init_space.sample()
-            left_ee_pos = left_ee_random_init_space.sample()
-            
-            right_q_des, right_q_iter, right_err, right_null_obj_val = self.inverse_kinematics_ee(ee_pos = right_ee_pos,null_obj_func = self.null_obj_func, arm= 'right',q_init=q_right_des_candidates[0], max_iter=5)
-            left_q_des, left_q_iter, left_err, left_null_obj_val = self.inverse_kinematics_ee(ee_pos = left_ee_pos,null_obj_func = self.null_obj_func, arm= 'left',q_init=q_left_des_candidates[0], max_iter=5)
-            
-            init_qpos[0:self.ur3_nqpos] = right_q_des
-            init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = left_q_des
-
-            # num_candidates = q_right_des_candidates.shape[0]
-            # right_idx = np.random.choice(num_candidates,1) 
-            # left_idx = np.random.choice(num_candidates,1) 
-            # init_qpos[0:self.ur3_nqpos] = q_right_des_candidates[right_idx]
-            # init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = q_left_des_candidates[left_idx]
+            num_candidates = q_right_des_candidates.shape[0]
+            right_idx = np.random.choice(num_candidates,1) 
+            left_idx = np.random.choice(num_candidates,1) 
+            init_qpos[0:self.ur3_nqpos] = q_right_des_candidates[right_idx]
+            init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = q_left_des_candidates[left_idx]
 
         else :
             # Currently for dual env test with 0th index init qpos
@@ -750,6 +394,191 @@ class DSCHODualUR3Env(DualUR3Env):
 
 
         return init_qpos
+
+    def _mujocoenv_init(self):
+        '''overridable method'''
+        MujocoEnv.__init__(self, self.mujoco_xml_full_path, self.mujocoenv_frame_skip, automatically_set_spaces = self.automatically_set_spaces)
+        if not self.automatically_set_spaces:
+            self._env_setup(self._get_init_qpos())
+            # self._set_action_space()
+            # self.do_simulation(self.action_space.sample(), self.frame_skip)
+
+    def _check_model_parameter_dimensions(self):
+        '''overridable method'''
+        assert 2*self.ur3_nqpos + 2*self.gripper_nqpos + sum(self.objects_nqpos) == self.model.nq, 'Number of qpos elements mismatch'
+        assert 2*self.ur3_nqvel + 2*self.gripper_nqvel + sum(self.objects_nqvel) == self.model.nv, 'Number of qvel elements mismatch'
+        # assert 2*self.ur3_nact + 2*self.gripper_nact == self.model.nu, 'Number of action elements mismatch'
+        assert 2*self.gripper_nact == self.model.nu, 'Number of action elements mismatch'
+
+    # def _set_action_space(self):
+    #     bounds = self.model.actuator_ctrlrange.copy().astype(np.float32)
+    #     gripper_low, gripper_high = bounds.T
+        
+    #     low = np.array([-1,-1,-1,gripper_low[0], -1,-1,-1, gripper_low[0]]) # assume all gripper action has same scale
+    #     high = np.array([1,1,1,gripper_high[0], 1,1,1,gripper_high[0]])
+    #     self.action_space = Box(low=low, high=high, dtype=np.float32)
+    #     return self.action_space
+
+    # NOTE : Should init the mocap?
+    def _env_setup(self, initial_qpos):
+        print('debug before set state : right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
+        self.set_state(initial_qpos, self.init_qvel)
+            # self.sim.data.set_joint_qpos(name, value)
+        
+        print('debug before reset modcap weld : right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
+        self.reset_mocap_welds(self.sim)
+        
+        print('debug before sim.forward reset modcap weld : right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
+        self.sim.forward()
+        
+        # right_gripper_target = self.get_endeff_pos('right')
+        # left_gripper_target = self.get_endeff_pos('left')
+        right_gripper_target = np.array([0.2, -0.4, 0.85])
+        left_gripper_target = np.array([-0.2, -0.4, 0.85])
+        
+        print('debug after sim.forward: right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
+
+        # Move end effector into position.
+        # gripper_target = np.array([-0.498, 0.005, -0.431 + self.gripper_extra_height]) + self.sim.data.get_site_xpos('right_gripper:hand')
+        
+        # right_gripper_rotation = np.array([1., 0., 1., 0.])
+        # left_gripper_rotation = np.array([1., 0., 1., 0.])
+        right_gripper_rotation = np.array([0., 1., 0., 0.])
+        left_gripper_rotation = np.array([0., 1., 0., 0.])
+
+
+        self.sim.data.set_mocap_pos('right_mocap', right_gripper_target)
+        self.sim.data.set_mocap_quat('right_mocap', right_gripper_rotation)
+        self.sim.data.set_mocap_pos('left_mocap', left_gripper_target)
+        self.sim.data.set_mocap_quat('left_mocap', left_gripper_rotation)
+        for _ in range(100):
+            self.sim.step()
+            print('debug after sim.step: right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
+        # Extract information for sampling goals.
+        # self.initial_gripper_xpos = self.sim.data.get_site_xpos('right_gripper:hand').copy()
+        # if self.has_object:
+        #     self.height_offset = self.sim.data.get_site_xpos('obj')[2]
+
+    def _set_action(self, action):
+        # print('action in set_action : ', action)
+        # Assume already scaled action
+        assert action.shape == (8,) # should use wrapper
+        action = action.copy()  # ensure that we don't change the action outside of this scope
+        right_pos_ctrl, right_gripper_ctrl, left_pos_ctrl, left_gripper_ctrl = action[:3], action[3], action[4:7], action[7]
+
+        # right_pos_ctrl *= 0.05  # limit maximum change in position
+        # right_rot_ctrl = [1., 0., 1., 0.]  # fixed rotation of the end effector, expressed as a quaternion
+        right_rot_ctrl = [0., 1., 0., 0.]  # fixed rotation of the end effector, expressed as a quaternion
+        right_gripper_ctrl = np.array([right_gripper_ctrl, right_gripper_ctrl])
+
+        # left_pos_ctrl *= 0.05  # limit maximum change in position
+        # left_rot_ctrl = [1., 0., 1., 0.]  # fixed rotation of the end effector, expressed as a quaternion
+        left_rot_ctrl = [0., 1., 0., 0.]  # fixed rotation of the end effector, expressed as a quaternion
+        left_gripper_ctrl = np.array([left_gripper_ctrl, left_gripper_ctrl])
+        
+
+        assert right_gripper_ctrl.shape == (2,) and left_gripper_ctrl.shape == (2,)
+        if self.block_gripper:
+            right_gripper_ctrl = np.zeros_like(right_gripper_ctrl)
+            left_gripper_ctrl = np.zeros_like(left_gripper_ctrl)
+        
+        action = np.concatenate([right_pos_ctrl, right_rot_ctrl, left_pos_ctrl, left_rot_ctrl, right_gripper_ctrl, left_gripper_ctrl])
+
+        # Apply action to simulation.
+        self.ctrl_set_action(self.sim, action)
+        self.mocap_set_action(self.sim, action)
+
+
+    def ctrl_set_action(self, sim, action):
+        """For torque actuators it copies the action into mujoco ctrl field.
+        For position actuators it sets the target relative to the current qpos.
+        """
+        if sim.model.nmocap > 0:
+            _, action = np.split(action, (sim.model.nmocap * 7, )) # only gripper ctrl
+        if sim.data.ctrl is not None:
+            for i in range(action.shape[0]):
+                if sim.model.actuator_biastype[i] == 0:
+                    sim.data.ctrl[i] = action[i]
+                else:
+                    idx = sim.model.jnt_qposadr[sim.model.actuator_trnid[i, 0]]
+                    sim.data.ctrl[i] = sim.data.qpos[idx] + action[i]
+
+
+    def mocap_set_action(self,sim, action):
+        """The action controls the robot using mocaps. Specifically, bodies
+        on the robot (for example the gripper wrist) is controlled with
+        mocap bodies. In this case the action is the desired difference
+        in position and orientation (quaternion), in world coordinates,
+        of the of the target body. The mocap is positioned relative to
+        the target body according to the delta, and the MuJoCo equality
+        constraint optimizer tries to center the welded body on the mocap.
+        """
+        if sim.model.nmocap > 0:
+            action, _ = np.split(action, (sim.model.nmocap * 7, ))
+            action = action.reshape(sim.model.nmocap, 7)
+
+            pos_delta = action[:, :3]
+            quat_delta = action[:, 3:]
+            
+            # print('pos_delta : {} quat_delta : {}'.format(pos_delta, quat_delta))
+            self.reset_mocap2body_xpos(sim)
+            sim.data.mocap_pos[:] = sim.data.mocap_pos + pos_delta
+            sim.data.mocap_quat[:] = sim.data.mocap_quat + quat_delta
+
+
+    def reset_mocap_welds(self, sim):
+        """Resets the mocap welds that we use for actuation.
+        """
+        if sim.model.nmocap > 0 and sim.model.eq_data is not None:
+            for i in range(sim.model.eq_data.shape[0]):
+                if sim.model.eq_type[i] == mujoco_py.const.EQ_WELD:
+                    sim.model.eq_data[i, :] = np.array(
+                        [0., 0., 0., 1., 0., 0., 0.])
+        sim.forward()
+
+
+    def reset_mocap2body_xpos(self, sim): #called at init
+        """Resets the position and orientation of the mocap bodies to the same
+        values as the bodies they're welded to.
+        """
+
+        if (sim.model.eq_type is None or
+            sim.model.eq_obj1id is None or
+            sim.model.eq_obj2id is None):
+            return
+        for eq_type, obj1_id, obj2_id in zip(sim.model.eq_type,
+                                            sim.model.eq_obj1id,
+                                            sim.model.eq_obj2id):
+            if eq_type != mujoco_py.const.EQ_WELD:
+                continue
+
+            mocap_id = sim.model.body_mocapid[obj1_id]
+            if mocap_id != -1:
+                # obj1 is the mocap, obj2 is the welded body
+                body_idx = obj2_id
+            else:
+                # obj2 is the mocap, obj1 is the welded body
+                mocap_id = sim.model.body_mocapid[obj2_id]
+                body_idx = obj1_id
+
+            assert (mocap_id != -1)
+            sim.data.mocap_pos[mocap_id][:] = sim.data.body_xpos[body_idx]
+            sim.data.mocap_quat[mocap_id][:] = sim.data.body_xquat[body_idx]
+
+    def step(self, action):
+        raise NotImplementedError('Currently, Not implemented for dual arm. We just overrided it in sigle arm env')
+        self._set_action(action)
+        self.sim.step()
+        # self._step_callback() # gripper close related
+        obs = self._get_obs()
+
+        done = False
+        info = {
+            'is_success': self._is_success(obs['achieved_goal'], self.goal),
+        }
+        reward = self.compute_reward(obs['achieved_goal'], self.goal, info)
+        return obs, reward, done, info
+        
 
 
     def get_endeff_pos(self, arm):
@@ -816,8 +645,10 @@ class DSCHODualUR3Env(DualUR3Env):
             finalgoal[-3:]
         )
 
+    
+
 #single ur3 만들고 그 하위로 reachenv 만들수도
-class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
+class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
     
     # Sholud be used with URScriptWrapper
     
@@ -841,7 +672,6 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
                 has_obstacle = False,
                 task = 'pickandplace',
                 observation_type='joint_q', #'ee_object_object', #'ee_object_all'
-                warm_start = False,
                 *args,
                 **kwargs
                 ):
@@ -853,7 +683,6 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         self.fixed_goal_qvel = fixed_goal_qvel
         self.task = task
         self.observation_type = observation_type
-        self.warm_start = warm_start
         # for LEAP(S=G) -> modified for S!=G (20200930)
         # assert (reduced_observation and not full_state_goal) or (not reduced_observation and full_state_goal)
         
@@ -883,7 +712,7 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
 
         self.reward_success_criterion = reward_success_criterion
         #self.automatically_set_spaces = automatically_set_spaces
-        self.which_hand = which_hand        
+        self.which_hand = which_hand
         super().__init__(xml_filename=xml_filename,
                         initMode=initMode, 
                         automatically_set_spaces=automatically_set_spaces, 
@@ -894,6 +723,7 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         
         if not self.automatically_set_spaces:
             self._set_action_space()
+            
 
         # self.obj_init_pos = self.get_obj_pos()
         # self.obj_names = ['obj']
@@ -958,7 +788,11 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         
         self.observation_space = self._set_observation_space(observation) 
     
-        
+    def _set_action_space(self):
+        act_low = np.array([-1,-1,-1,-1, -1,-1,-1,-1])
+        act_high = np.array([1,1,1,1, 1,1,1,1])
+        self.action_space = Box(low=act_low, high=act_high, dtype=np.float32)
+
     # goal space == state space
     # ee_pos 뽑고, 그에 따른 qpos 계산(IK) or qpos뽑고 그에따른 ee_pos 계산(FK)
     # 우선은 후자로 생각(어처피 학습할땐 여기저기 goal 다 뽑고, 쓸때는 제한해서 goal 샘플할꺼니까)
@@ -1022,44 +856,36 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
 
 
     def reset_model(self):
+        # original_ob = super().reset_model() # init qpos,qvel set_state and get_obs
+        # assert not self.random_init, 'it is only for reaching env'
+        # 이렇게 하면 obs에 샘플한 state_goal이 반영이 안됨. -> 밑에서 별도 설정!
         
+        # self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
         qpos = self._get_init_qpos() + self.np_random.uniform(size=self.model.nq, low=-0.01, high=0.01)
         qvel = self.init_qvel + self.np_random.uniform(size=self.model.nv, low=-0.01, high=0.01)
         
-        if self.which_hand == 'right':
-            start_p, end_p = self.ur3_nqpos+self.gripper_nqpos, 2*self.ur3_nqpos+2*self.gripper_nqpos
-            start_v, end_v = self.ur3_nqvel+self.gripper_nqvel, 2*self.ur3_nqvel+2*self.gripper_nqvel
-            qpos[start_p:end_p] = self.left_get_away_qpos
-        elif self.which_hand == 'left':
-            start_p, end_p = 0, self.ur3_nqpos+self.gripper_nqpos
-            start_v, end_v = 0, self.ur3_nqvel+self.gripper_nqvel
-            qpos[start_p:end_p] = self.right_get_away_qpos
-            
         self.set_state(qpos, qvel)
+        # NOTE : check mocap pos quat
 
         # randomly reset the initial position of an object
         if self.has_object:
             if self.task in ['pickandplace', 'push']:
+                object_xpos = np.random.uniform(
+                                self.goal_obj_pos_space.low,
+                                self.goal_obj_pos_space.high,
+                                size=(self.goal_obj_pos_space.low.size),
+                            )[:2]
+                object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
                 ee_pos = self.get_endeff_pos(arm=self.which_hand)
-                if self.warm_start : # set object pos same as ee pos
-                    object_pos = ee_pos.copy() - np.array([0.0, 0.0, 0.01]) # minus offset
-                else:
+                
+                while np.linalg.norm(object_pos - ee_pos) < 0.05:
                     object_xpos = np.random.uniform(
-                                    self.goal_obj_pos_space.low,
-                                    self.goal_obj_pos_space.high,
-                                    size=(self.goal_obj_pos_space.low.size),
-                                )[:2]
+                                self.goal_obj_pos_space.low,
+                                self.goal_obj_pos_space.high,
+                                size=(self.goal_obj_pos_space.low.size),
+                            )[:2]
                     object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
-                    
-                    
-                    while np.linalg.norm(object_pos - ee_pos) < 0.05:
-                        object_xpos = np.random.uniform(
-                                    self.goal_obj_pos_space.low,
-                                    self.goal_obj_pos_space.high,
-                                    size=(self.goal_obj_pos_space.low.size),
-                                )[:2]
-                        object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
-                    # print('In reset model, ee pos : {} obj pos : {}'.format(ee_pos, object_pos))
+                # print('In reset model, ee pos : {} obj pos : {}'.format(ee_pos, object_pos))
 
                 object_qpos = self.sim.data.get_joint_qpos('objjoint')
                 assert object_qpos.shape == (7,)
@@ -1180,12 +1006,30 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
             'achieved_goal' : achieved_goal.copy(),
             'desired_goal' : self._state_goal.copy(), 
         }    
+
+        
     
     def step(self, action):
+        # print('action in SingleUR3GoalMocapEnv step : ', action)
         # actions of remaning arm will be garbage
-        action = action.copy()
+        # gripper [-1,1] should be mod to
+        self._set_action(action)
+        multi_step = 30
+        for i in range(multi_step):
+            self.sim.step()
+        # self._step_callback() # gripper close related
+        
 
-        self.do_simulation(action, self.frame_skip)
+        # action = action.copy()
+        # right_joint_ctrl, left_joint_ctrl, right_gripper_ctrl, left_gripper_ctrl = action[:6], action[6:8], action[8:14], action[14:]
+        
+        # if self.block_gripper: # close gripper
+        #     right_gripper_ctrl = 50*np.ones_like(right_gripper_ctrl)
+        #     left_gripper_ctrl = 50*np.ones_like(left_gripper_ctrl)
+
+        # action = np.concatenate([right_joint_ctrl, left_joint_ctrl, right_gripper_ctrl, left_gripper_ctrl], axis =-1)            
+
+        # self.do_simulation(action, self.frame_skip)
         self.curr_path_length +=1
 
         # print('curr_path_length ', self.curr_path_length)
@@ -1406,33 +1250,27 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         self.set_state(qpos, qvel)
 
 
-
-
-
-
-
-
-class DSCHOSingleUR3PickAndPlaceEnv(DSCHOSingleUR3GoalEnv):
+class DSCHOSingleUR3PickAndPlaceEnv(DSCHOSingleUR3GoalMocapEnv):
     def __init__(self, *args, **kwargs):
         self.save_init_params(locals())
         super().__init__(has_object=True, block_gripper=False, task='pickandplace', *args, **kwargs)
 
-class DSCHOSingleUR3PushEnv(DSCHOSingleUR3GoalEnv):
+class DSCHOSingleUR3PushEnv(DSCHOSingleUR3GoalMocapEnv):
     def __init__(self, *args, **kwargs):
         self.save_init_params(locals())
         super().__init__(has_object=True, block_gripper=True, task='push',*args, **kwargs)
 
-class DSCHOSingleUR3ReachEnv(DSCHOSingleUR3GoalEnv):
+class DSCHOSingleUR3ReachEnv(DSCHOSingleUR3GoalMocapEnv):
     def __init__(self, *args, **kwargs):
         self.save_init_params(locals())
         super().__init__(has_object=False, block_gripper=True, task='reach', *args, **kwargs)
 
-class DSCHOSingleUR3AssembleEnv(DSCHOSingleUR3GoalEnv):
+class DSCHOSingleUR3AssembleEnv(DSCHOSingleUR3GoalMocapEnv):
     def __init__(self, *args, **kwargs):
         self.save_init_params(locals())
         super().__init__(has_object=True, block_gripper=False, task='assemble', *args, **kwargs)
 
-class DSCHOSingleUR3DrawerOpenEnv(DSCHOSingleUR3GoalEnv):
+class DSCHOSingleUR3DrawerOpenEnv(DSCHOSingleUR3GoalMocapEnv):
     def __init__(self, *args, **kwargs):
         self.save_init_params(locals())
         super().__init__(has_object=True, block_gripper=False, task='drawer_open', *args, **kwargs)
