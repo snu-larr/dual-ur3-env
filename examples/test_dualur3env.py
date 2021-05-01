@@ -3279,7 +3279,9 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     env = gym_custom.make(env_id , 
                         initMode = None, 
                         sparse_reward = True, 
-                        which_hand=which_hand, 
+                        which_hand=which_hand,
+                        observation_type = 'ee_object_all',
+                        trigonometry_observation = False, 
                         # ur3_random_init = False,
                         )
     # env =  DSCHOSingleUR3PickAndPlaceEnv(xml_filename = 'dscho_dual_ur3_mocap_object.xml', 
@@ -3314,6 +3316,9 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     print('dt : ', dt)
     
     # obs = env.reset()
+    # env.step(env.action_space.sample())
+    # while True:
+    #     env.render()
     # # while True :
     # #     env.render()
     # # _, right_ee_pos, _ = env.forward_kinematics_ee(qpos_right, 'right')

@@ -15,6 +15,7 @@ import tensorflow as tf
 import joblib
 import time
 import mujoco_py
+from gym_custom.envs.robotics import rotations #, robot_env, utils
 color2num = dict(
     gray=30,
     red=31,
@@ -421,14 +422,14 @@ class DSCHODualUR3MocapEnv(DualUR3Env):
 
     # NOTE : Should init the mocap?
     def _env_setup(self, initial_qpos):
-        print('debug before set state : right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
+        # print('debug before set state : right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
         self.set_state(initial_qpos, self.init_qvel)
             # self.sim.data.set_joint_qpos(name, value)
         
-        print('debug before reset modcap weld : right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
+        # print('debug before reset modcap weld : right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
         self.reset_mocap_welds(self.sim)
         
-        print('debug before sim.forward reset modcap weld : right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
+        # print('debug before sim.forward reset modcap weld : right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
         self.sim.forward()
         
         # right_gripper_target = self.get_endeff_pos('right')
@@ -436,7 +437,7 @@ class DSCHODualUR3MocapEnv(DualUR3Env):
         right_gripper_target = np.array([0.2, -0.4, 0.85])
         left_gripper_target = np.array([-0.2, -0.4, 0.85])
         
-        print('debug after sim.forward: right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
+        # print('debug after sim.forward: right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
 
         # Move end effector into position.
         # gripper_target = np.array([-0.498, 0.005, -0.431 + self.gripper_extra_height]) + self.sim.data.get_site_xpos('right_gripper:hand')
@@ -453,7 +454,7 @@ class DSCHODualUR3MocapEnv(DualUR3Env):
         self.sim.data.set_mocap_quat('left_mocap', left_gripper_rotation)
         for _ in range(100):
             self.sim.step()
-            print('debug after sim.step: right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
+            # print('debug after sim.step: right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
         # Extract information for sampling goals.
         # self.initial_gripper_xpos = self.sim.data.get_site_xpos('right_gripper:hand').copy()
         # if self.has_object:
@@ -741,7 +742,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
             self.obs_nqpos = 3 # ee_pos
         elif self.observation_type =='ee_object_all':
             assert not self.trigonometry_observation
-            raise NotImplementedError
+            # raise NotImplementedError
             self.obs_nqpos = None
 
         qpos_low = -np.ones(int(self.ur3_nqpos))*2*np.pi
@@ -974,11 +975,29 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         elif self.observation_type == 'ee_object_pos':
             obs = np.concatenate([ee_pos, obj_pos])
         elif self.observation_type == 'ee_object_all':
-            raise NotImplementedError
-            ee_vel = None
-            obj_vel = None
-            obj_rot = None
-            obs = np.concatenate([ee_pos, obj_pos])
+            # 실제 로봇실험에서 불가능한것 : gripper_state, gripper_vel, object_velp, object_velr, object_velp
+            obj_rot = rotations.mat2euler(self.sim.data.get_site_xmat('objSite'))
+            # velocities
+            dt = self.sim.nsubsteps * self.sim.model.opt.timestep # same as self.dt
+            obj_velp = self.sim.data.get_site_xvelp('objSite') * dt
+            obj_velr = self.sim.data.get_site_xvelr('objSite') * dt
+            obj_rel_pos = obj_pos - ee_pos
+            # from_ee_pos_to_right_gripper_site_pos = self.sim.data.get_site_xpos(self.which_hand+'_gripper:rightEndEffector') - ee_pos
+            # from_ee_pos_to_left_gripper_site_pos = self.sim.data.get_site_xpos(self.which_hand+'_gripper:leftEndEffector') - ee_pos
+            # right_distance = np.linalg.norm(from_ee_pos_to_right_gripper_site_pos, axis =-1)
+            # left_distance = np.linalg.norm(from_ee_pos_to_left_gripper_site_pos, axis =-1)
+            
+            right_slide_joint_qpos = self.sim.data.get_joint_qpos(self.which_hand+'_gripper:right_fingertip:slide:control')
+            left_slide_joint_qpos = self.sim.data.get_joint_qpos(self.which_hand+'_gripper:left_fingertip:slide:control')
+            right_slide_joint_qvel = self.sim.data.get_joint_qvel(self.which_hand+'_gripper:right_fingertip:slide:control')
+            left_slide_joint_qvel = self.sim.data.get_joint_qvel(self.which_hand+'_gripper:left_fingertip:slide:control')
+            gripper_state = np.array([right_slide_joint_qpos, left_slide_joint_qpos])
+            gripper_vel = np.array([right_slide_joint_qvel, left_slide_joint_qvel])*dt
+
+            # ee_xpos= self.sim.data.get_body_xpos(self.which_hand + '_gripper:hand')
+            ee_velp = self.sim.data.get_body_xvelp(self.which_hand + '_gripper:hand')
+            
+            obs = np.concatenate([ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), gripper_state, obj_rot.ravel(), obj_velp.ravel(), obj_velr.ravel(), ee_velp, gripper_vel], axis =-1)
 
         '''
         For reference, Fetch Env's observation consist of
