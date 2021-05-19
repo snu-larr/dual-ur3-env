@@ -87,11 +87,13 @@ class DualWrapper(URScriptWrapper_DualUR3):
         return super().reset(**kwargs)
         
     def step(self, action):
+        action = action.copy()
         for _ in range(self.multi_step-1):
             self._step(action)
         return self._step(action)
 
     def _step(self, action): 
+        
         # Assume 
         # if gripper_action is True:
         # action is np.array(right_ur3(6), right_gripper(1), left ur3(6), left_gripper(1)) 
@@ -222,6 +224,7 @@ class SingleWrapper(URScriptWrapper_DualUR3):
 
     # Wrapper 에서 multistep을 해야 제일 lowlevel에선 매 timestep마다 command 새로계산(정확도 증가)
     def step(self, action):
+        action = action.copy()
         for _ in range(self.multi_step-1):
             self._step(action)
         return self._step(action)        
@@ -409,6 +412,7 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
             
     # Wrapper 에서 multistep을 해야 제일 lowlevel에선 매 timestep마다 command 새로계산함으로써 정확도 증가되는데, 내부적으로 IK sol 쓰다보니 이런구조는 아니라 정확도 살짝 떨어질수도
     def step(self, action):
+        action = action.copy()
         # down scale [-1,1] to [-0.005, 0.005]
         
         # action = copy.deepcopy(action) # 통째로 *downscale이면 문제 없는데 index로 접근할땐 array가 mutable이라 copy해줘야함, but 매 스텝마다 action을 새로 뽑는상황이라면 굳이 이렇게 안해도 상관없음. 똑같은 action으로 계속 step밟을 때나 문제가 되는거지
@@ -574,7 +578,7 @@ class EndEffectorPositionControlDualWrapper(URScriptWrapper_DualUR3):
 
     # Wrapper 에서 multistep을 해야 제일 lowlevel에선 매 timestep마다 command 새로계산함으로써 정확도 증가되는데, 내부적으로 IK sol 쓰다보니 이런구조는 아니라 정확도 살짝 떨어질수도
     def step(self, action):
-        
+        action = action.copy()
         # Assume 
         # if gripper_action is True:
         # action is np.array(right delta ee pos(3), right_gripper(1), left delta ee pos(3), left_gripper(1)) 
