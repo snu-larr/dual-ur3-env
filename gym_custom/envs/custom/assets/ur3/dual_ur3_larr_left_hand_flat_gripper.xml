@@ -40,6 +40,7 @@
                 <geom name="left_gripper:right_follower_mesh" pos="0.0025 0.021 0" type="mesh" mesh="robotiq_85_finger_tip_link" material="GriMat" 
                     condim="4" solimp="0.99 0.99 0.01" solref="0.01 1" friction="5 0.1 0.002" />
                 <site name="left_gripper:rightEndEffector" pos="0.004 0.0175 0" size="0.01" rgba="1.0 0.0 0.0 1.0"/>
+                <body name="left_gripper:right_dummy_body_for_weld" pos="0.004 0.0175 0"></body>
             </body>
 
         </body>
@@ -77,6 +78,7 @@
                 <geom name="left_gripper:left_follower_mesh" pos="0.0025 0.021 0" type="mesh" mesh="robotiq_85_finger_tip_link" material="GriMat" 
                     condim="4" solimp="0.99 0.99 0.01" solref="0.01 1" friction="5 0.1 0.002" />
                 <site name="left_gripper:leftEndEffector" pos="0.004 0.0175 0" size="0.01" rgba="1.0 0.0 0.0 1.0"/> 
+                <body name="left_gripper:left_dummy_body_for_weld" pos="0.004 0.0175 0"></body> 
                 <!-- <site name="left_gripper:left_follower_1" pos="0.02 0.03 0 " size=".006 .014 .014"/> -->
             </body>
 
@@ -90,5 +92,6 @@
         <!--pos 불확실-->
         <!-- <site name="left_gripper:leftEndEffector" pos="0.004 0.0175 0" size="0.01" rgba="1.0 0.0 0.0 1.0"/>  -->
     </body>
+    <site name="left_gripper:grip" pos="0.02 0 0" rgba="0 1 0 0" size="0.02 0.02 0.02"></site>
 
 </mujoco>

@@ -322,6 +322,7 @@ class URScriptWrapper(ActionWrapper):
     def move_gripper_force(self, gf):
         # raise NotImplementedError() # TODO: this needs to be tested and/or debugged
         assert gf.shape[0] == self.ngripperdof
+        # print('gf : ', gf)
         action = np.concatenate([gf, gf]) + self._env_getters['gbias']()
         return action, 'gripper'
 

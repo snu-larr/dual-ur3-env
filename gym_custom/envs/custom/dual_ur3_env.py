@@ -10,6 +10,8 @@ from gym_custom.envs.mujoco import MujocoEnv
 
 #dscho mod
 from gym_custom.core import Serializable
+
+# For ICRA 2021
 no_object_xmls = ['dscho_dual_ur3.xml', 'dscho_dual_ur3_obstacle_v0.xml', 'dscho_dual_ur3_obstacle_v1.xml', 'dscho_dual_ur3_obstacle_v2.xml', 'dscho_dual_ur3_obstacle_v3.xml', 'dscho_dual_ur3_obstacle_v4.xml', 'dscho_dual_ur3_obstacle_v5.xml']
 lift_xmls = ['dscho_dual_ur3_bar.xml', 'dscho_dual_ur3_bar_obstacle_v0.xml', 'dscho_dual_ur3_bar_obstacle_v1.xml', 'dscho_dual_ur3_bar_obstacle_v2.xml','dscho_dual_ur3_bar_obstacle_v3.xml','dscho_dual_ur3_bar_obstacle_v4.xml','dscho_dual_ur3_bar_obstacle_v5.xml',\
             'dscho_dual_ur3_cylinder.xml', 'dscho_dual_ur3_cylinder_obstacle_v0.xml', 'dscho_dual_ur3_cylinder_obstacle_v1.xml', 'dscho_dual_ur3_cylinder_obstacle_v2.xml', 'dscho_dual_ur3_cylinder_obstacle_v3.xml','dscho_dual_ur3_cylinder_obstacle_v4.xml','dscho_dual_ur3_cylinder_obstacle_v5.xml',\
@@ -18,6 +20,9 @@ pickandplace_xmls = ['dscho_dual_ur3_bar_pickandplace.xml', 'dscho_dual_ur3_bar_
                     'dscho_dual_ur3_cylinder_pickandplace.xml', 'dscho_dual_ur3_cylinder_pickandplace_obstacle_v0.xml', 'dscho_dual_ur3_cylinder_pickandplace_obstacle_v1.xml', 'dscho_dual_ur3_cylinder_pickandplace_obstacle_v2.xml', 'dscho_dual_ur3_cylinder_pickandplace_obstacle_v3.xml','dscho_dual_ur3_cylinder_pickandplace_obstacle_v4.xml','dscho_dual_ur3_cylinder_pickandplace_obstacle_v5.xml',\
                     ]
 stick_pull_xmls = ['dscho_dual_ur3_stick_pull.xml', 'dscho_dual_ur3_stick_pull_obstacle_v0.xml', 'dscho_dual_ur3_stick_pull_obstacle_v2.xml', 'dscho_dual_ur3_stick_pull_obstacle_v3.xml','dscho_dual_ur3_stick_pull_obstacle_v4.xml','dscho_dual_ur3_stick_pull_obstacle_v5.xml']
+
+# After ICRA 2021
+object_xmls = ['dscho_dual_ur3_object.xml', 'dscho_dual_ur3_mocap_object.xml', 'dscho_dual_ur3_mocap_object_flat_gripper.xml']
 
 class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
 
@@ -36,6 +41,7 @@ class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
                 initMode = None,
                 automatically_set_spaces=True,
                 ur3_random_init = False,
+                
                 ):
         #dscho mod
         self.save_init_params(locals())
@@ -43,6 +49,7 @@ class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
         self.initMode = initMode
         self.automatically_set_spaces = automatically_set_spaces
         self.ur3_random_init = ur3_random_init
+        
         if xml_filename is None :
             self.mujoco_xml_full_path = os.path.join(os.path.dirname(__file__), 'assets/ur3/dual_ur3_base.xml')
             self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [7,7,7,7] 
@@ -63,7 +70,14 @@ class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
             self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [7,2] # long box(stick), pull_object
             self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, [6,2]
             self.num_objects = 2
+        elif xml_filename in object_xmls:
+            self.mujoco_xml_full_path = os.path.join(os.path.dirname(__file__), 'assets/ur3/'+xml_filename)
+            self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [7] # cube object
+            self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, [6]
+            self.num_objects = 1
         
+            
+
         #self._ezpickle_init()
         self._mujocoenv_init()
         self._check_model_parameter_dimensions()
@@ -103,10 +117,8 @@ class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
         assert 2*self.ur3_nqvel + 2*self.gripper_nqvel + sum(self.objects_nqvel) == self.model.nv, 'Number of qvel elements mismatch'
         assert 2*self.ur3_nact + 2*self.gripper_nact == self.model.nu, 'Number of action elements mismatch'
 
-    def _define_class_variables(self):
+    def _set_init_qpos(self):
         '''overridable method'''
-        # Initial position for UR3
-        # dscho mod
         if self.ur3_random_init:
             pass
         if self.initMode is None :
@@ -135,9 +147,6 @@ class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
                 np.array([-0.32213427, -1.81002217, -1.87559869, -1.72603011, -1.79932887,  1.82011286]) # right arm
             self.init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = \
                 np.array([ 0.3209594,  -1.33282653,  1.87653391, -1.41410399, 1.79674747, -1.81847637])# left arm
-            
-            
-
         elif self.initMode =='horizontal':
             # horizontal init
             self.init_qpos[0:self.ur3_nqpos] = \
@@ -146,6 +155,13 @@ class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
                 np.array([-1.85786483, -1.3540493,  -1.89351501, -1.18579177,  0.82976128, -0.50789828])# left arm
         else :
             raise NotImplementedError
+
+    def _define_class_variables(self):
+        '''overridable method'''
+        # Initial position for UR3
+        # dscho mod
+        self._set_init_qpos()
+    
         # Variables for forward/inverse kinematics
         # https://www.universal-robots.com/articles/ur-articles/parameters-for-calculations-of-kinematics-and-dynamics/
         self.kinematics_params = {}
@@ -172,7 +188,7 @@ class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
         if not os.path.isfile(path_to_pkl):
             pickle.dump(self.kinematics_params, open(path_to_pkl, 'wb'))
 
-    #
+    
     # Utilities (general)
 
     def forward_kinematics_DH(self, q, arm):

@@ -7,14 +7,14 @@
     <site name="subgoal_1" pos="0.0 0.0 0.0" size="0.01" rgba="1 1 1 1"/>
     <site name="subgoal_2" pos="0.0 0.0 0.0" size="0.01" rgba="1 1 1 1"/>
     
-    <site name="right_subgoal_1" pos="0.0 0.0 0.0" size="0.01" rgba="1 0 0 1"/>
-    <site name="right_subgoal_2" pos="0.0 0.0 0.0" size="0.01" rgba="1 0.5 0 1"/>
-    <site name="right_subgoal_3" pos="0.0 0.0 0.0" size="0.01" rgba="1 1 0 1"/>
-    <site name="right_subgoal_4" pos="0.0 0.0 0.0" size="0.01" rgba="0 1 0 1"/>
-    <site name="left_subgoal_1" pos="0.0 0.0 0.0" size="0.01" rgba="1 0 0 1"/>
-    <site name="left_subgoal_2" pos="0.0 0.0 0.0" size="0.01" rgba="1 0.5 0 1"/>
-    <site name="left_subgoal_3" pos="0.0 0.0 0.0" size="0.01" rgba="1 1 0 1"/>
-    <site name="left_subgoal_4" pos="0.0 0.0 0.0" size="0.01" rgba="0 1 0 1"/>
+    <site name="right_subgoal_1" pos="0.0 0.0 0.0" size="0.05" rgba="1 0 0 0.5"/>
+    <site name="right_subgoal_2" pos="0.0 0.0 0.0" size="0.05" rgba="1 0.5 0 0.5"/>
+    <site name="right_subgoal_3" pos="0.0 0.0 0.0" size="0.05" rgba="1 1 0 0.5"/>
+    <site name="right_subgoal_4" pos="0.0 0.0 0.0" size="0.05" rgba="0 1 0 0.5"/>
+    <site name="left_subgoal_1" pos="0.0 0.0 0.0" size="0.05" rgba="1 0 0 0.5"/>
+    <site name="left_subgoal_2" pos="0.0 0.0 0.0" size="0.05" rgba="1 0.5 0 0.5"/>
+    <site name="left_subgoal_3" pos="0.0 0.0 0.0" size="0.05" rgba="1 1 0 0.5"/>
+    <site name="left_subgoal_4" pos="0.0 0.0 0.0" size="0.05" rgba="0 1 0 0.5"/>
 
     <site name="finalgoal" pos="0.0 0.0 0.0" size="0.01" rgba="0 0 0 1"/>
 </mujoco>

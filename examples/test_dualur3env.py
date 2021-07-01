@@ -3037,6 +3037,497 @@ def dscho_init_qpos_candidate_pickling(env_type='sim', render=False):
         obs, _, _, _ = env.step(action)
         if render: env.render()
 
+def dscho_single_ur3_object_test(env_type='sim', render=False, make_video = False):
+    list_of_env_types = ['sim', 'real']
+
+    q_control_type = 'speedj'
+    if q_control_type == 'servoj':
+        PID_gains = {'servoj': {'P': 1.0, 'I': 0.5, 'D': 0.2}}
+    elif q_control_type == 'speedj':
+        PID_gains = {'speedj': {'P': 0.2, 'I': 10.0}} # was 0.2, 5.0
+    ur3_scale_factor = np.array([50.0, 50.0, 25.0, 10.0, 10.0, 10.0])*np.array([1.0, 1.0, 1.0, 2.5, 2.5, 2.5])
+    gripper_scale_factor = np.array([1.0])
+    g_control_type='move_gripper_force'
+    gripper_action = True
+    
+    from gym_custom.envs.custom.dscho_dual_ur3_goal_env_without_obstacle import EndEffectorPositionControlSingleWrapper, EndEffectorPositionControlDualWrapper
+    env_id = 'dscho-single-ur3-pickandplace-v1'
+    # env_id = 'dscho-single-ur3-push-v1'
+    # env_id = 'dscho-single-ur3-reach-v1'
+
+    which_hand = 'right'
+    env = gym_custom.make(env_id, initMode = None, full_state_goal = False, observation_type='joint_q', ur3_random_init = True,
+                            trigonometry_observation= True, warm_start=False, ur3_random_init_so3_constraint = 'vertical_side',
+                            sparse_reward = True, which_hand=which_hand)
+    multi_step=50 # 1step : 0.1s -> 10Hz
+    
+    env = EndEffectorPositionControlSingleWrapper(env=env,
+                                                q_control_type=q_control_type,
+                                                g_control_type=g_control_type,
+                                                multi_step=multi_step,
+                                                gripper_action=gripper_action,
+                                                PID_gains=PID_gains,
+                                                ur3_scale_factor=ur3_scale_factor,
+                                                gripper_scale_factor=gripper_scale_factor,
+                                                so3_constraint='vertical_side',
+                                                action_downscale=0.02, # Assuming tanh action, step당 최대 0.01m
+                                                gripper_force_scale=250,
+                                                )
+    dt = env.dt
+    print('dt : ', dt)
+    
+    
+    if make_video:
+        import os
+        import tensorflow as tf
+        assert not render
+        cur_vid_dir = os.path.join('./', 'example_video')
+        tf.io.gfile.makedirs(cur_vid_dir)
+        from dscho_util.video_wrapper import VideoWrapper        
+        full_vid_name = 'rollout_'+env_id
+        ur3_cam = True
+        custom_env = True
+        env = VideoWrapper(env, base_path=cur_vid_dir, base_name=full_vid_name, ur3_cam=ur3_cam, custom_env = custom_env)
+
+    obs = env.reset()
+    right_gripper_right_state = env.data.get_site_xpos('right_gripper:rightEndEffector')
+    right_gripper_left_state = env.data.get_site_xpos('right_gripper:leftEndEffector')
+    distance = np.linalg.norm(right_gripper_right_state - right_gripper_left_state, axis =-1)
+    print('distance after reset : ', distance)
+    # while True:
+    #     env.render()
+    # for i in range(3):
+    #     action = np.array([0.0, 0, 0.0, 1])
+    #     env.step(action)
+
+    # for i in range(20):
+    #     action = np.array([0.5, 0, 0.3, 1])
+    #     env.step(action)
+
+    # for i in range(20):
+    #     action = np.array([-0.5, 0, -0.3, -1])
+    #     env.step(action)
+    
+    # env.close()
+    # import sys
+    # sys.exit()
+    
+    # for i in range(1): 
+    #     action = np.array([0,0,0,1])
+    #     env.step(action)
+
+    # for i in range(3): 
+    #     action = np.array([0,0,0,-1])
+    #     env.step(action)
+
+    # while True:
+    #     env.render()
+
+
+
+
+    right_ee_pos_candidate = [np.array([0.15, -0.35, 0.8])]
+    from gym_custom.envs.custom.ur_utils import SO3Constraint, NoConstraint
+    null_obj_func = SO3Constraint(SO3='vertical_side')
+    
+    idx = 0
+    q_right_des, iter_taken_right, err_right, null_obj_right = env.inverse_kinematics_ee(right_ee_pos_candidate[idx], null_obj_func, arm=which_hand)
+    # q_left_des, iter_taken_left, err_left, null_obj_left = env.inverse_kinematics_ee(left_ee_pos_candidate[idx], null_obj_func, arm='left')
+    print('q_right_des : {}, iter_taken : {}, err : {}, null_obj : {}'.format(q_right_des, iter_taken_right, err_right, null_obj_right))
+    # print('q_left_des : {}, iter_taken : {}, err : {}, null_obj : {}'.format(q_left_des, iter_taken_left, err_left, null_obj_left))
+    print('goal : {}'.format(env.get_site_pos('goal')))
+    # init_qpos = env.data.qpos.copy()
+    # init_qvel = env.init_qvel.copy()
+    # q_right_des_candidates =q_right_des
+    # # q_left_des_candidates = q_left_des
+    # init_qpos[0:env.ur3_nqpos] = q_right_des_candidates
+    # # init_qpos[env.ur3_nqpos+env.gripper_nqpos:2*env.ur3_nqpos+env.gripper_nqpos] = q_left_des_candidates
+    # env.set_state(init_qpos, init_qvel)
+    current_right_ee_pos = env.get_endeff_pos('right')
+    object_pos = env.get_site_pos('objSite')
+    print('right ee pos : {}, left ee pos : {} object pos : {}'.format(env.get_endeff_pos('right'), env.get_endeff_pos('left'), object_pos))
+    
+    # env.step(env.action_space.sample())
+    # while True:
+    #     env.render()
+
+    desired_goal =obs['desired_goal']
+
+    duration = 1 # in seconds
+    start = time.time()
+    
+    # reach
+    single = True
+    action_scale = 30 # 빠르게 움직이고 싶으면 action downscale or action scale조절(NOTE : action scale은 원래 학습의 영역임)
+    grip_scale = 1
+    for i in range(2):
+        
+        for t in range(int(duration/dt)):
+            if i==0  :
+                if single:
+                    action_xyz = object_pos+ np.array([0,0,0.1])-current_right_ee_pos
+                    action_xyz = np.tanh(action_scale*action_xyz)
+                    action_grip = grip_scale*np.array([-1])
+                    action = np.concatenate([action_xyz, action_grip], axis =-1) # open
+                    
+                else :
+                    action = np.array([-0.0, 0.0, 1.0, -5.0, 0.0, 0.0, 1.0, -5.0])
+            elif i==1:
+                if single:
+                    action_xyz = object_pos-np.array([0,0,0.0])-current_right_ee_pos
+                    action_xyz = np.tanh(action_scale*action_xyz)
+                    action_grip = grip_scale*np.array([0.0]) # obj쪽으로 가면서 gripper 조금씩 close하려했는데 force이다보니 아무리 작은 value여도 0이상이면 닫히는 속도는 same
+                    action = np.concatenate([action_xyz, action_grip]) # open
+                else :
+                    action = np.array([-1.0, 0.0, -0.3, -5.0, 1.0, 0.0, -0.3,-5.0])
+            
+            
+            
+            obs, _, _, _ = env.step(action.copy())
+            if render: env.render()
+            # TODO: get_obs_dict() takes a long time causing timing issues.
+            #   Is it due to Upboard's lackluster performance or some deeper
+            #   issues within UR Script wrppaer?
+            qpos_right = env._get_ur3_qpos()[:env.ur3_nqpos]
+            qpos_left = env._get_ur3_qpos()[env.ur3_nqpos:]
+            qvel_right = env._get_ur3_qvel()[:env.ur3_nqvel]
+            qvel_left = env._get_ur3_qvel()[env.ur3_nqvel:]
+            _, right_ee_pos, _ = env.forward_kinematics_ee(qpos_right, 'right')
+            _, left_ee_pos, _ = env.forward_kinematics_ee(qpos_left, 'left')
+            current_right_ee_pos = env.get_endeff_pos('right')
+            object_pos = env.get_site_pos('objSite')
+            
+            gripper_qpos_right = env._get_gripper_qpos()[:env.gripper_nqpos]
+            gripper_qpos_left = env._get_gripper_qpos()[env.gripper_nqpos:]
+
+            # print('time: %f [s]'%(t*dt))
+            print('step : {}, right ee : {} obj : {} act : {}'.format(t, right_ee_pos, object_pos, action))
+                
+            # print('right arm joint pos error [deg]: %f vel error [dps]: %f'%(np.rad2deg(right_pos_err), np.rad2deg(right_vel_err)))
+            # print('left arm joint pos error [deg]: %f vel error [dps]: %f'%(np.rad2deg(left_pos_err), np.rad2deg(left_vel_err)))
+    
+    # pick and lift
+    for i in range(3):
+        
+        for t in range(int(duration/dt)):
+            if i==0:
+                if single:                    
+                    action_xyz = np.tanh(np.zeros(3))
+                    action_grip = grip_scale*np.array([1])
+                    action = np.concatenate([action_xyz, action_grip]) # close
+                else :
+                    action = np.array([0.0, 0.0, 0.0, 15.0, 0.0, 0.0, 0.0, 15.0])
+            elif i>=1 :
+                if single:                    
+                    action_xyz = desired_goal-current_right_ee_pos
+                    action_xyz = np.tanh(action_scale*action_xyz)
+                    action_grip = grip_scale*np.array([1])
+                    action = np.concatenate([action_xyz, action_grip]) # open
+                    
+                else :
+                    action = np.array([0.0, 0.0, 1.0, 15.0, 0.0, 0.0, 1.0, 15.0])
+            
+            
+
+            obs, reward, done, info = env.step(action.copy())
+
+            if render: env.render()
+            # TODO: get_obs_dict() takes a long time causing timing issues.
+            #   Is it due to Upboard's lackluster performance or some deeper
+            #   issues within UR Script wrppaer?
+            qpos_right = env._get_ur3_qpos()[:env.ur3_nqpos]
+            qpos_left = env._get_ur3_qpos()[env.ur3_nqpos:]
+            qvel_right = env._get_ur3_qvel()[:env.ur3_nqvel]
+            qvel_left = env._get_ur3_qvel()[env.ur3_nqvel:]
+            _, right_ee_pos, _ = env.forward_kinematics_ee(qpos_right, 'right')
+            _, left_ee_pos, _ = env.forward_kinematics_ee(qpos_left, 'left')
+            current_right_ee_pos = env.get_endeff_pos('right')
+            object_pos = env.get_site_pos('objSite')
+            # print('time: %f [s]'%(t*dt))
+            print('step : {}, right ee : {} obj : {} act : {} reward : {}'.format(t, right_ee_pos, object_pos, action, reward))
+            # print('right arm joint pos error [deg]: %f vel error [dps]: %f'%(np.rad2deg(right_pos_err), np.rad2deg(right_vel_err)))
+            # print('left arm joint pos error [deg]: %f vel error [dps]: %f'%(np.rad2deg(left_pos_err), np.rad2deg(left_vel_err)))
+    finish = time.time()
+
+    if make_video:
+        env.close()
+    else:
+        while True:
+            env.render()
+
+def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video = False):
+    list_of_env_types = ['sim', 'real']
+
+    q_control_type = 'speedj'
+    if q_control_type == 'servoj':
+        PID_gains = {'servoj': {'P': 1.0, 'I': 0.5, 'D': 0.2}}
+    elif q_control_type == 'speedj':
+        PID_gains = {'speedj': {'P': 0.2, 'I': 10.0}} # was 0.2, 5.0
+    ur3_scale_factor = np.array([50.0, 50.0, 25.0, 10.0, 10.0, 10.0])*np.array([1.0, 1.0, 1.0, 2.5, 2.5, 2.5])
+    gripper_scale_factor = np.array([1.0])
+    g_control_type='move_gripper_force'
+    gripper_action = True
+    
+    # from gym_custom.envs.custom.dscho_dual_ur3_goal_env_without_obstacle import EndEffectorPositionControlSingleWrapper, EndEffectorPositionControlDualWrapper
+    # env_id = 'dscho-single-ur3-pickandplace-v1'
+    # env_id = 'dscho-single-ur3-push-v1'
+    # env_id = 'dscho-single-ur3-reach-v1'
+    env_id = 'dscho-single-ur3-mocap-pickandplace-v1'
+
+    which_hand = 'right'
+    from gym_custom.envs.custom.dscho_dual_ur3_goal_mocap_env_without_obstacle import DSCHOSingleUR3PickAndPlaceEnv, MocapSingleWrapper
+    env = gym_custom.make(env_id , 
+                        initMode = None, 
+                        sparse_reward = True, 
+                        which_hand=which_hand,
+                        observation_type = 'ee_object_all',
+                        trigonometry_observation = False,
+                        flat_gripper = True, 
+                        xml_filename = 'dscho_dual_ur3_mocap_object_flat_gripper.xml',
+                        # ur3_random_init = False,
+                        )
+    # env =  DSCHOSingleUR3PickAndPlaceEnv(xml_filename = 'dscho_dual_ur3_mocap_object.xml', 
+    #                                     initMode = None,
+    #                                     # automatically_set_spaces=True,
+    #                                     sparse_reward = True, which_hand=which_hand,
+    #                                     # ur3_random_init = False
+    #                                     )
+        
+    # env = gym_custom.make(env_id, initMode = None, full_state_goal = False, 
+    #                         reduced_observation = False, trigonometry_observation= True,
+    #                         sparse_reward = True, which_hand=which_hand)
+    # multi_step=50 # 1step : 0.1s -> 10Hz
+    multi_step=50 # 1step : 0.002s -> 500Hz
+    
+    env = MocapSingleWrapper(env=env,
+                            # q_control_type=q_control_type,
+                            # g_control_type=g_control_type,
+                            multi_step=multi_step,
+                            gripper_action=gripper_action,
+                            PID_gains=PID_gains,
+                            ur3_scale_factor=ur3_scale_factor,
+                            gripper_scale_factor=gripper_scale_factor,
+                            so3_constraint='vertical_side',
+                            action_downscale=0.04, # Assuming tanh action, step당 최대 0.01m
+                            gripper_force_scale=1,
+                            )
+    # 1 * 0.02 = maximum 0.02m per 1step
+
+    dt = env.dt
+    # dt = 0.1
+    print('dt : ', dt)
+    obs = env.reset()
+    r_joint_qpos = env.sim.data.get_joint_qpos('right_gripper:r_gripper_finger_joint')
+    l_joint_qpos = env.sim.data.get_joint_qpos('right_gripper:l_gripper_finger_joint')
+    print('r joint q : {} l joint q : {}'.format(r_joint_qpos, l_joint_qpos))
+    print('dummy right body for weld : {}'.format(env.sim.data.get_body_xpos('right_gripper:right_dummy_body_for_weld')))
+    grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
+    print('g pos : {} o pos : {} o relpos : {} g state : {} o rot : {} o velp : {} o velr : {} g velp : {} g vel : {}'.format(grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel))
+    # print('close')
+    # for i in range(100):        
+    #     next_obs, reward, done, info = env.step(np.array([0.0, 0.0, 0.0, 1]))
+    #     grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(next_obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
+    #     r_joint_qpos = env.sim.data.get_joint_qpos('right_gripper:r_gripper_finger_joint')
+    #     l_joint_qpos = env.sim.data.get_joint_qpos('right_gripper:l_gripper_finger_joint')
+    #     print('g pos : {} o pos : {} o relpos : {} g state : {} o rot : {} o velp : {} o velr : {} g velp : {} g vel : {}'.format(grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel))
+    #     print('r joint q : {} l joint q : {}'.format(r_joint_qpos, l_joint_qpos))
+    #     print('dummy right body for weld : {}'.format(env.sim.data.get_body_xpos('right_gripper:right_dummy_body_for_weld')))
+    #     obs = next_obs
+    
+
+    # for i in range(2):
+    #     print('open')
+    #     env.step(np.array([0.0, 0.0, 0.0, -1]))
+    #     r_joint_qpos = env.sim.data.get_joint_qpos('right_gripper:r_gripper_finger_joint')
+    #     l_joint_qpos = env.sim.data.get_joint_qpos('right_gripper:l_gripper_finger_joint')
+    #     print('r joint q : {} l joint q : {}'.format(r_joint_qpos, l_joint_qpos))
+    #     print('dummy right body for weld : {}'.format(env.sim.data.get_body_xpos('right_gripper:right_dummy_body_for_weld')))
+    # while True:
+    #     env.render()
+    # # while True :
+    # #     env.render()
+    # # _, right_ee_pos, _ = env.forward_kinematics_ee(qpos_right, 'right')
+    # current_right_ee_pos = env.get_endeff_pos('right')
+    # object_pos = env.get_site_pos('objSite')
+    # print('init right ee : {} obj : {}'.format(current_right_ee_pos, object_pos))
+    
+    # for t in range(4):        
+    #     action = np.array([0.0, 0.0, 0.0, 1.0])*1
+    #     next_obs, _, _, _ = env.step(action.copy())
+    #     if render: env.render()
+    #     # TODO: get_obs_dict() takes a long time causing timing issues.
+    #     #   Is it due to Upboard's lackluster performance or some deeper
+    #     #   issues within UR Script wrppaer?
+    #     qpos_right = env._get_ur3_qpos()[:env.ur3_nqpos]
+    #     qpos_left = env._get_ur3_qpos()[env.ur3_nqpos:]
+    #     qvel_right = env._get_ur3_qvel()[:env.ur3_nqvel]
+    #     qvel_left = env._get_ur3_qvel()[env.ur3_nqvel:]
+    #     _, right_ee_pos, _ = env.forward_kinematics_ee(qpos_right, 'right')
+    #     _, left_ee_pos, _ = env.forward_kinematics_ee(qpos_left, 'left')
+    #     current_right_ee_pos = env.get_endeff_pos('right')
+    #     object_pos = env.get_site_pos('objSite')
+        
+    #     gripper_qpos_right = env._get_gripper_qpos()[:env.gripper_nqpos]
+    #     gripper_qpos_left = env._get_gripper_qpos()[env.gripper_nqpos:]
+    #     print('step : {}, right ee : {} obj : {} act : {}'.format(t, right_ee_pos, object_pos, action))
+        
+    #     obs = next_obs
+
+    # while True :
+    #     env.render()
+
+
+
+    # pick and place test
+    
+    if make_video:
+        import os
+        import tensorflow as tf
+        assert not render
+        cur_vid_dir = os.path.join('./', 'example_video')
+        tf.io.gfile.makedirs(cur_vid_dir)
+        from dscho_util.video_wrapper import VideoWrapper        
+        full_vid_name = 'rollout_'+env_id
+        ur3_cam = True
+        custom_env = True
+        env = VideoWrapper(env, base_path=cur_vid_dir, base_name=full_vid_name, ur3_cam=ur3_cam, custom_env = custom_env)
+
+
+    duration = 1 # in seconds
+    single = True
+    action_scale = 30 # 빠르게 움직이고 싶으면 action downscale or action scale조절(NOTE : action scale은 원래 학습의 영역임)
+    grip_scale = 1
+    n_episodes=2
+
+    
+    observations =[]
+    for episode in range(n_episodes):
+        obs = env.reset()
+        desired_goal =obs['desired_goal']
+        current_right_ee_pos = env.get_endeff_pos('right')
+        grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
+        print('reset, g pos : {} o pos : {} o relpos : {} g state : {} o rot : {} o velp : {} o velr : {} g velp : {} g vel : {}'.format(grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel))
+        obs_list =[]
+        obs_list.append(np.concatenate([obs['observation'], obs['desired_goal']], axis =-1))
+        for i in range(2):
+            
+            for t in range(int(duration/dt)):
+                if i==0  :
+                    if single:
+                        action_xyz = object_pos+ np.array([0,0,0.1])-current_right_ee_pos
+                        action_xyz = np.tanh(action_scale*action_xyz)
+                        action_grip = grip_scale*np.array([-1])
+                        action = np.concatenate([action_xyz, action_grip], axis =-1) # open
+                        
+                    else :
+                        action = np.array([-0.0, 0.0, 1.0, -5.0, 0.0, 0.0, 1.0, -5.0])
+                elif i==1:
+                    if single:
+                        action_xyz = object_pos-np.array([0,0,0.0])-current_right_ee_pos
+                        action_xyz = np.tanh(action_scale*action_xyz)
+                        action_grip = grip_scale*np.array([0.0]) # obj쪽으로 가면서 gripper 조금씩 close하려했는데 force이다보니 아무리 작은 value여도 0이상이면 닫히는 속도는 same
+                        action = np.concatenate([action_xyz, action_grip]) # open
+                    else :
+                        action = np.array([-1.0, 0.0, -0.3, -5.0, 1.0, 0.0, -0.3,-5.0])
+                
+                
+                
+                obs, _, _, _ = env.step(action.copy())
+                if render: env.render()
+                # TODO: get_obs_dict() takes a long time causing timing issues.
+                #   Is it due to Upboard's lackluster performance or some deeper
+                #   issues within UR Script wrppaer?
+                qpos_right = env._get_ur3_qpos()[:env.ur3_nqpos]
+                qpos_left = env._get_ur3_qpos()[env.ur3_nqpos:]
+                qvel_right = env._get_ur3_qvel()[:env.ur3_nqvel]
+                qvel_left = env._get_ur3_qvel()[env.ur3_nqvel:]
+                _, right_ee_pos, _ = env.forward_kinematics_ee(qpos_right, 'right')
+                _, left_ee_pos, _ = env.forward_kinematics_ee(qpos_left, 'left')
+                current_right_ee_pos = env.get_endeff_pos('right')
+                object_pos = env.get_site_pos('objSite')
+                
+                gripper_qpos_right = env._get_gripper_qpos()[:env.gripper_nqpos]
+                gripper_qpos_left = env._get_gripper_qpos()[env.gripper_nqpos:]
+
+                # print('time: %f [s]'%(t*dt))
+                # print('step : {}, right ee : {} obj : {} act : {}'.format(t, right_ee_pos, object_pos, action))
+                grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
+                print('step : {}, g pos : {} o pos : {} o relpos : {} g state : {} o rot : {} o velp : {} o velr : {} g velp : {} g vel : {}'.format(t, grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel))
+                # print('right arm joint pos error [deg]: %f vel error [dps]: %f'%(np.rad2deg(right_pos_err), np.rad2deg(right_vel_err)))
+                # print('left arm joint pos error [deg]: %f vel error [dps]: %f'%(np.rad2deg(left_pos_err), np.rad2deg(left_vel_err)))
+                obs_list.append(np.concatenate([obs['observation'], obs['desired_goal']], axis =-1))
+        # pick and lift & open gripper
+        for i in range(4):
+            
+            for t in range(int(duration/dt)):
+                if i==0:
+                    if single:                    
+                        action_xyz = np.tanh(np.zeros(3))
+                        action_grip = grip_scale*np.array([1])
+                        action = np.concatenate([action_xyz, action_grip]) # close
+                    else :
+                        action = np.array([0.0, 0.0, 0.0, 15.0, 0.0, 0.0, 0.0, 15.0])
+                elif i==1 or i==2 :
+                    if single:                    
+                        action_xyz = desired_goal-current_right_ee_pos
+                        action_xyz = np.tanh(action_scale*action_xyz)
+                        action_grip = grip_scale*np.array([1])
+                        action = np.concatenate([action_xyz, action_grip]) # open
+                        
+                    else :
+                        action = np.array([0.0, 0.0, 1.0, 15.0, 0.0, 0.0, 1.0, 15.0])
+                elif i==3: #open gripper
+                    action = np.array([0.0, 0.0, 0.0, -1.0])
+
+                obs, reward, done, info = env.step(action.copy())
+
+                if render: env.render()
+                # TODO: get_obs_dict() takes a long time causing timing issues.
+                #   Is it due to Upboard's lackluster performance or some deeper
+                #   issues within UR Script wrppaer?
+                qpos_right = env._get_ur3_qpos()[:env.ur3_nqpos]
+                qpos_left = env._get_ur3_qpos()[env.ur3_nqpos:]
+                qvel_right = env._get_ur3_qvel()[:env.ur3_nqvel]
+                qvel_left = env._get_ur3_qvel()[env.ur3_nqvel:]
+                _, right_ee_pos, _ = env.forward_kinematics_ee(qpos_right, 'right')
+                _, left_ee_pos, _ = env.forward_kinematics_ee(qpos_left, 'left')
+                current_right_ee_pos = env.get_endeff_pos('right')
+                object_pos = env.get_site_pos('objSite')
+                # print('time: %f [s]'%(t*dt))
+                # print('step : {}, right ee : {} obj : {} act : {} reward : {}'.format(t, right_ee_pos, object_pos, action, reward))
+                grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
+                print('step : {}, g pos : {} o pos : {} o relpos : {} g state : {} o rot : {} o velp : {} o velr : {} g velp : {} g vel : {}'.format(t, grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel))
+                # print('right arm joint pos error [deg]: %f vel error [dps]: %f'%(np.rad2deg(right_pos_err), np.rad2deg(right_vel_err)))
+                # print('left arm joint pos error [deg]: %f vel error [dps]: %f'%(np.rad2deg(left_pos_err), np.rad2deg(left_vel_err)))
+                obs_list.append(np.concatenate([obs['observation'], obs['desired_goal']], axis =-1))
+
+        observations.append(np.stack(obs_list, axis =0)) #[ts, dim])
+    
+    observations = np.stack(observations,axis=0) #[bs, ts, dim]
+    
+    plot = True
+    if plot:
+        import matplotlib.pyplot as plt
+        import os
+        import tensorflow as tf
+        cur_vid_dir = os.path.join('./', 'example_video')
+        tf.io.gfile.makedirs(cur_vid_dir)
+        for i in range(n_episodes):
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            for j in range(observations.shape[-1]):
+                ax.plot(observations[i, :, j], label='obs_'+str(j))
+            plt.legend(loc='best')
+            plt.savefig(cur_vid_dir+'/obs_traj_'+str(i))
+            plt.close()
+
+
+    if make_video:
+        env.close()
+    else:
+        while True:
+            env.render()
+
 if __name__ == '__main__':
     # 1. MuJoCo model verification
     # show_dual_ur3()
@@ -3062,12 +3553,16 @@ if __name__ == '__main__':
     # dscho_single_arm_goal_sample_debug(env_type='sim', render=True)
     # dscho_dual_arm_test(render=True)
     # dscho_single_arm_test(render=True)
-    dscho_posxyz_v1_test(render=True)
+    # dscho_posxyz_v1_test(render=True)
     # dscho_posxyz_v2_test(render=True)
     # dscho_posxyz_v4_test(render=True)
     # dscho_posxyz_v5_test(render=True)
     # dscho_posxyz_single_v4_v5_test(render=True)
     # dscho_init_qpos_candidate_pickling(render=True)
+    # dscho_single_ur3_object_test(render=False, make_video =True)
+    dscho_mocap_single_ur3_object_test(render=False, make_video =False)
+
+
     # 3. Misc. tests
     # real_env_get_obs_rate_test(wait=False)
     # real_env_command_send_rate_test(wait=False)
