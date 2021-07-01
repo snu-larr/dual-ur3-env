@@ -132,7 +132,10 @@ class URScriptInterface(object):
         self.comm.operate_gripper(0)
 
     def close_gripper(self, *args, **kwargs):
-        self.comm.operate_gripper(255)
+        # self.comm.operate_gripper(255) # dscho mod, it was 255
+        self.comm.force_gripper(172) #172 for bar 62 for cylinder
+    # def force_gripper(self, pos):
+    #     self.comm.force_gripper(pos)
 
     def move_gripper(self, *args, **kwargs):
         '''Compatibility wrapper for move_gripper_position()'''
@@ -140,13 +143,14 @@ class URScriptInterface(object):
 
     def move_gripper_position(self, g):
         # TODO: dscho
-        g = 0
-        if g < 0: # open
-            return self.open_gripper()
-        elif g > 0: # close
-            return self.close_gripper()
-        else: # do nothing
-            return None
+        self.comm.force_gripper(g)
+        # g = 0
+        # if g < 0: # open
+        #     return self.open_gripper()
+        # elif g > 0: # close
+        #     return self.close_gripper()
+        # else: # do nothing
+        #     return None
 
     def move_gripper_velocity(self, gd):
         # TODO: dscho

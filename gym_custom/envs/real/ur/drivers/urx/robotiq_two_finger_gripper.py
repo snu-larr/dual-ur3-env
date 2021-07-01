@@ -175,6 +175,12 @@ class Robotiq_Two_Finger_Gripper(object):
         self.add_line_to_program("  rq_move_and_wait(255, gripper_socket)")
         self.add_line_to_program("  end")
         self.add_line_to_program("  ")
+        #dscho mod
+        self.add_line_to_program("  def rq_gripper_pos_and_wait(pos, gripper_socket=\"gripper_socket\"):")
+        self.add_line_to_program("  rq_move_and_wait(pos, gripper_socket)")
+        self.add_line_to_program("  end")
+        self.add_line_to_program("  ")
+
 
         self.add_line_to_program("  def rq_move(pos, gripper_socket=\"gripper_socket\"):")
         self.add_line_to_program("  rq_mov_complete = 0")
@@ -748,6 +754,16 @@ class Robotiq_Two_Finger_Gripper(object):
             self.add_line_to_program("rq_close_and_wait()")
         else:
             self.add_line_to_program("rq_close()")
+    
+    def force_gripper(self, force):
+        #dscho mod
+        # self.add_line_to_program("  def rq_close_and_wait(gripper_socket=\"gripper_socket\"):")
+        # self.add_line_to_program("  rq_move_and_wait(255, gripper_socket)")
+        # self.add_line_to_program("  end")
+        # self.add_line_to_program("  ")
+
+        self.add_line_to_program("rq_gripper_pos_and_wait("+str(force)+")")
+
 
     def get_gripper_position(self):
         raise NotImplementedError

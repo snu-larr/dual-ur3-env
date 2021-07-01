@@ -15,6 +15,7 @@ import tensorflow as tf
 import joblib
 import time
 from gym_custom.envs.real.utils import prompt_yes_or_no
+import sys
 
 color2num = dict(
     gray=30,
@@ -43,14 +44,15 @@ class DualWrapperReal(object):
                 q_control_type, 
                 g_control_type, 
                 gripper_action=True, 
-                speedj_args={'a': 5, 't': None, 'wait': None}, 
-                servoj_args = {'t': None, 'wait': None},
+                speedj_args=None, 
+                servoj_args = None,
                 *args, 
                 **kwargs
                 ):
+
+                
         self.env = env
         
-        super().__init__(env, *args, **kwargs)
         self.q_control_type = q_control_type
         self.g_control_type = g_control_type
         self.gripper_action = gripper_action
@@ -89,7 +91,7 @@ class DualWrapperReal(object):
 
     def reset(self, **kwargs):
         # return self.env.reset(**kwargs)
-        return super().reset(**kwargs)
+        return self.env.reset(**kwargs)
         
     def step(self, action, wait=False):
         # for _ in range(self.multi_step-1):
@@ -119,15 +121,15 @@ class DualWrapperReal(object):
         left_q_control_args, left_g_control_args = self._get_control_kwargs(self.q_control_type, self.g_control_type, left_ur3_action, left_gripper_action) 
         
         if right_gripper_action != 0:
-            command = {'right': {self.g_control_type : right_g_control_args}}
+            command = {'right': right_g_control_args}
             if left_gripper_action !=0:
-                command.update({'left': {self.g_control_type : left_g_control_args}})
+                command.update({'left': left_g_control_args})
             else :
                 command.update({'left': {self.q_control_type : left_q_control_args}})
         else:
             command = {'right': {self.q_control_type : right_q_control_args}}
             if left_gripper_action !=0:
-                command.update({'left': {self.g_control_type : left_g_control_args}})
+                command.update({'left': left_g_control_args})
             else :
                 command.update({'left': {self.q_control_type : left_q_control_args}})
 
@@ -644,8 +646,7 @@ class DSCHODualUR3RealEnv(DualUR3RealEnv):
         default_right_qpos = np.array([[-90.0, -90.0, -90.0, -90.0, -135.0, 180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
         default_left_qpos = np.array([[90.0, -90.0, 90.0, -90.0, 135.0, -180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
         
-        if False:
-            raise NotImplementedError('You can just use set_initial_joint_pos & vel')
+        if True:
             if 'v0' in self.env_name :
                 raise NotImplementedError
                 # self.init_qpos_candidates = joblib.load('init_qpos_obstacle-v0.pkl')
@@ -668,42 +669,57 @@ class DSCHODualUR3RealEnv(DualUR3RealEnv):
             self.init_qpos_candidates['q_right_des'] = np.concatenate([self.init_qpos_candidates['q_right_des'], default_right_qpos], axis = 0)
             self.init_qpos_candidates['q_left_des'] = np.concatenate([self.init_qpos_candidates['q_left_des'], default_left_qpos], axis = 0)
 
-    def _get_init_qpos(self):
-        raise NotImplementedError('You can just use set_initial_joint_pos & vel')
-        init_qpos = self.init_qpos.copy()
+    def _get_init_qpos(self):      
+        init_qpos = np.zeros([12])
     
         # Currently for dual env test with 0th index init qpos
         q_right_des_candidates = self.init_qpos_candidates['q_right_des'] # [num_candidate, qpos dim]
         q_left_des_candidates = self.init_qpos_candidates['q_left_des']
-        if 'obstacle_v0' in self.env_name : # Not implemented
+        if 'Obstacle-v0' in self.env_name : # Not implemented
             right_idx = -1
             left_idx = -1  
-        elif 'obstacle_v1' in self.env_name :
+        elif 'Obstacle-v1' in self.env_name :
+            print('idx is -1')
             right_idx = -1
             left_idx = -1
-        elif 'obstacle_v2' in self.env_name :
+        elif 'Obstacle-v2' in self.env_name :
             right_idx = 0
             left_idx = 0
-        elif 'obstacle_v3' in self.env_name : # Not implemented
+        elif 'Obstacle-v3' in self.env_name : # Not implemented
             right_idx = -1
             left_idx = -1
-        elif 'obstacle_v4' in self.env_name :
+        elif 'Obstacle-v4' in self.env_name :
             right_idx = 0
             left_idx = 0
-        elif 'obstacle_v5' in self.env_name :
-            right_idx = 0
-            left_idx = 0
-        init_qpos[0:self.ur3_nqpos] = q_right_des_candidates[right_idx]
-        init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = q_left_des_candidates[left_idx]
+        elif 'Obstacle-v5' in self.env_name :
+            right_idx = 1
+            left_idx = 1
+        init_qpos[:6] = q_right_des_candidates[right_idx]
+        init_qpos[6:] = q_left_des_candidates[left_idx]
+        
+        null_obj_func = SO3Constraint(SO3='vertical_side')
+        init_right_ee_pos = self.get_endeff_pos(q= init_qpos[:6], arm='right')
+        init_left_ee_pos = self.get_endeff_pos(q= init_qpos[6:], arm='left')
+
+        right_q_des, right_iter, right_err, right_null_obj = self.inverse_kinematics_ee(init_right_ee_pos+np.array([0,-0.0,0.0]), null_obj_func, 'right')
+        left_q_des, left_iter, left_err, left_null_obj = self.inverse_kinematics_ee(init_left_ee_pos+np.array([0,-0.0,0.0]), null_obj_func, 'left')
+        
+        init_qpos[:6] = right_q_des
+        init_qpos[6:] = left_q_des
+        
+        modified_init_right_ee_pos = self.get_endeff_pos(q= init_qpos[:6], arm='right')
+        modified_init_left_ee_pos = self.get_endeff_pos(q= init_qpos[6:], arm='left')
+        print('right_q_des : {} , iter : {}, err : {} nul obj : {} ee pos :{}'.format(right_q_des, right_iter, right_err, right_null_obj, modified_init_right_ee_pos))
+        print('left_q_des : {} , iter : {}, err : {} nul obj : {} ee pos :{}'.format(left_q_des, left_iter, left_err, left_null_obj, modified_init_left_ee_pos))
         
         return init_qpos
 
     def get_endeff_pos(self, arm, q = None, wait=False):
         if q is None:
             if arm == 'right':
-                q= self.interface_right.get_joint_positions(wait=wait),
+                q= self.interface_right.get_joint_positions(wait=wait)
             elif arm =='left' :
-                q= self.interface_left.get_joint_positions(wait=wait),
+                q= self.interface_left.get_joint_positions(wait=wait)
         else :
             pass
         R, p, T = self.forward_kinematics_ee(q, arm)
@@ -726,39 +742,37 @@ class DSCHODualUR3RealEnv(DualUR3RealEnv):
 
 class DSCHODualUR3ObjectRealEnv(DSCHODualUR3RealEnv):
     def __init__(self, 
-                predefined_obj_pos= [0.0, -0.3, 0.78], # for v4
+                predefined_obj_pos= None,
                 *args, 
                 **kwargs
                 ):
         
-        self.predefined_obj_pos = np.array(predefined_obj_pos)
+        self.predefined_obj_pos = predefined_obj_pos
         super().__init__(*args, **kwargs)
         
 
     def get_obj_pos(self, name=None):
-        return self.predefined_obj_pos.copy()
+        return self.predefined_obj_pos
 
     
 
 class DSCHODualUR3PickAndPlaceRealEnv(DSCHODualUR3ObjectRealEnv):
 
     def __init__(self,
-                # sparse_reward = False,
-                # distance_threshold = 0.05,                
                 reduced_observation = False,
                 trigonometry_observation = True, 
                 env_name = None,
-                predefined_goal = [0.0, -0.3, 0.92], # for v4
-                predefined_offset_for_right_grasp = [0.11, 0.0, 0.0],# for bar
-                predefined_offset_for_left_grasp = [-0.11, 0.0, 0.0],# for bar
-                predefined_placebox_center = [0.0, -0.48, 0.79],# for v4
+                predefined_goal = None, 
+                predefined_offset_for_right_grasp = None,
+                predefined_offset_for_left_grasp = None,
+                predefined_placebox_center = None,
                 *args,
                 **kwargs
                 ):
-
-        self.predefined_goal = np.array(predefined_goal)
-        self.predefined_offset_for_right_grasp = np.array(predefined_offset_for_right_grasp)
-        self.predefined_offset_for_left_grasp = np.array(predefined_offset_for_left_grasp)
+        self.env_name = env_name
+        self.predefined_goal = predefined_goal
+        self.predefined_offset_for_right_grasp = predefined_offset_for_right_grasp
+        self.predefined_offset_for_left_grasp = predefined_offset_for_left_grasp
         self.predefined_placebox_center = predefined_placebox_center
         
         self.reduced_observation = reduced_observation
@@ -771,8 +785,9 @@ class DSCHODualUR3PickAndPlaceRealEnv(DSCHODualUR3ObjectRealEnv):
         # self.sparse_reward = sparse_reward
         # self.distance_threshold = distance_threshold
         
-        self._state_goal = np.array(self.predefined_goal)
-        
+        self._state_goal = predefined_goal
+        # predefined_obj_pos = kwargs.get('predefined_obj_pos',np.array([0.0,-0.3,0.77]))
+
         super().__init__(*args, **kwargs)
 
         if 'PickAndPlace' in env_name or 'pickandplace' in env_name:
@@ -796,7 +811,7 @@ class DSCHODualUR3PickAndPlaceRealEnv(DSCHODualUR3ObjectRealEnv):
     def step(self, action, wait=False):
         assert isinstance(action, dict)
 
-        ob, reward, done, {} = super().step(action, wait=wait)
+        ob, reward, done, _ = super().step(action, wait=wait)
                 
         info = {
                 # 'is_success': self._is_success(ob['achieved_goal'], self._state_goal),
@@ -811,8 +826,8 @@ class DSCHODualUR3PickAndPlaceRealEnv(DSCHODualUR3ObjectRealEnv):
                 # 'object_qpos': self.get_obj_qpos(name='obj'),
                 # 'object_vel': self.get_obj_qvel(name='obj'),
                 # 'object_quat': self.get_obj_quat(name='obj'),
-                'object_right_grasp_point' : self.get_obj_pos + self.predefined_offset_for_right_grasp,
-                'object_left_grasp_point' : self.get_obj_pos + self.predefined_offset_for_left_grasp,
+                'object_right_grasp_point' : self.get_obj_pos(name='obj') + self.predefined_offset_for_right_grasp,
+                'object_left_grasp_point' : self.get_obj_pos(name='obj') + self.predefined_offset_for_left_grasp,
                 'state_finalgoal' : self._state_finalgoal.copy(),
                 'state_goal' : self._state_goal,
                 'state_right_subgoals' : self._state_right_subgoals,
@@ -826,7 +841,7 @@ class DSCHODualUR3PickAndPlaceRealEnv(DSCHODualUR3ObjectRealEnv):
         done = False
 
         self.info = copy.deepcopy(info)
-        reward = None
+        
         self.curr_path_length +=1
         return ob, reward, done, info
 
@@ -920,11 +935,16 @@ class DSCHODualUR3PickAndPlaceRealEnv(DSCHODualUR3ObjectRealEnv):
     #     return self._get_obs()
     
     def reset_model(self):
+        self._init_qpos = self._get_init_qpos()
+        
+        
         if prompt_yes_or_no('reset model would use movej to init qpos, where endeffector pos is \r\n right: %s \r\n left: %s \r\n?'
-            %(self.get_endeff_pos('right'), self.get_endeff_pos('left'))) is False:
+            %(self.get_endeff_pos(q= self._init_qpos[:6], arm='right'), self.get_endeff_pos(q=self._init_qpos[6:],arm='left'))) is False:
             print('exiting program!')
             sys.exit()
         super().reset_model()
+
+        
         # qpos = self._get_init_qpos() + self.np_random.uniform(size=self.model.nq, low=-0.01, high=0.01)
         # qvel = self.init_qvel + self.np_random.uniform(size=self.model.nv, low=-0.01, high=0.01)
         # self.set_state(qpos, qvel)
@@ -973,8 +993,9 @@ class DSCHODualUR3PickAndPlaceRealEnv(DSCHODualUR3ObjectRealEnv):
 
 
 #single ur3 만들고 그 하위로 reachenv만들수도
-class DSCHOSingleUR3ReachEnv(DSCHODualUR3Env):
-    raise NotImplementedError
+
+class DSCHOSingleUR3ReachRealEnv(DSCHODualUR3RealEnv):
+    
     # Sholud be used with URScriptWrapper
     
     def __init__(self,
@@ -1462,16 +1483,121 @@ class DSCHOSingleUR3ReachEnv(DSCHODualUR3Env):
 
 
 
-class DSCHODualUR3PickAndPlaceEnvObstacle(DSCHODualUR3PickAndPlaceEnv):
+class DSCHODualUR3PickAndPlaceRealEnvObstacle(DSCHODualUR3PickAndPlaceRealEnv):
     def __init__(self, *args, **kwargs):
         self.save_init_params(locals())
         # xml_filename = 'dscho_dual_ur3_obstacle.xml'
         super().__init__( *args, **kwargs)
     
-class DSCHOSingleUR3ReachEnvObstacle(DSCHOSingleUR3ReachEnv):
+class DSCHOSingleUR3ReachRealEnvObstacle(DSCHOSingleUR3ReachRealEnv):
     def __init__(self, *args, **kwargs):
         self.save_init_params(locals())
         # xml_filename = 'dscho_dual_ur3_obstacle.xml'
         super().__init__( *args, **kwargs)
         
 
+if __name__ == "__main__":
+    #import gym_custom
+    #env = gym_custom.make('dscho-real-dual-ur3-v0', host_ip_right='192.168.5.102', host_ip_left='192.168.5.101', rate=10)
+    
+    
+    env_kwargs = dict(
+        host_ip_right='192.168.5.102', 
+        host_ip_left='192.168.5.101', 
+        rate=10, # 너무 느리면 25Hz정도까지 늘려보기 
+        reduced_observation = False,
+        trigonometry_observation = True, 
+        env_name = 'UR3DualLiftRealEnvObstacle-v1',
+    )
+
+    object_type=['bar', 'cylinder']
+    obstacle_type = ['v1', 'v4'] # v4 and v5 considered as same
+    obj = object_type[1]
+    obstacle = obstacle_type[1]
+    
+    if obj =='bar':
+        env_kwargs.update(dict(predefined_offset_for_right_grasp = np.array([0.11, 0.0, 0.01]),# for bar
+                                predefined_offset_for_left_grasp = np.array([-0.11, 0.0, 0.01]),# for bar
+                                )
+                            )
+        
+    elif obj =='cylinder':
+        env_kwargs.update(dict(predefined_offset_for_right_grasp = np.array([0.13, 0.0, 0.0]),# for bar
+                                predefined_offset_for_left_grasp = np.array([-0.13, 0.0, 0.0]),# for bar
+                                )
+                            )
+    a = 1
+    if obstacle == 'v1':
+        env_kwargs.update(dict(predefined_goal = np.array([0.0, -0.27, 0.92]), # for v4
+                                predefined_placebox_center = np.array([0.0, -0.5, 0.875]),# for v4
+                                predefined_obj_pos= np.array([0.0, -0.27, 0.78]), #for v4
+                                )
+                            )
+    elif obstacle =='v4':
+        env_kwargs.update(dict(predefined_goal = np.array([0.0, -0.3, 0.92]), # for v4
+                                predefined_placebox_center = np.array([0.0, -0.48, 0.79]),# for v4
+                                predefined_obj_pos= np.array([0.0, -0.3, 0.78]), #for v4
+                                )
+                            )
+        
+        
+    env = DSCHODualUR3PickAndPlaceRealEnv(**env_kwargs)
+    # env = gym_custom.make('dscho-real-dual-ur3-v0', **env_kwargs)
+    g_control_type='OnOff'
+    q_control_type='speedj'
+    speedj_args = {'a': 5, 't': 2/env.rate._freq, 'wait': False}
+    servoj_args = {'t': 2/env.rate._freq, 'wait': False}
+    # real은 PID, scale factor등은 필요가없음(HW built in이니까)
+    env = DualWrapperReal(env=env, 
+                            q_control_type=q_control_type, 
+                            g_control_type=g_control_type, 
+                            gripper_action=True, 
+                            speedj_args= speedj_args, 
+                            servoj_args = servoj_args,
+                            )
+    
+
+    
+    
+    print('done')
+    # if prompt_yes_or_no('reset model would use movej to init qpos, where endeffector pos is \r\n right: %s \r\n left: %s \r\n?'
+    #     %(self.get_endeff_pos('right'), self.get_endeff_pos('left'))) is False:
+    #     print('exiting program!')
+    #     sys.exit()
+
+
+    obs = env.reset()
+    print('obs : {}'.format(obs))
+    time.sleep(2)
+    
+    env.interface_right.close_gripper()
+    time.sleep(2)
+    env.interface_left.close_gripper()
+    time.sleep(4)
+
+    # close-open-close gripper
+    print('close')
+    
+    # env.step({'right': {'close_gripper' :{}}, 'left': {'close_gripper': {}}})
+    for i in range(10):
+        r_act = np.array([0,0,0,0,0,0.5,0])
+        l_act = np.array([0,0,0,0,0,0.5,0])
+        act = np.concatenate([r_act,l_act], axis =-1)
+        # next_ob, rew, done, info = env.step(act)
+        print(env.step(act))
+    
+    print('done')
+
+
+
+
+
+
+
+
+
+
+
+    
+    
+    

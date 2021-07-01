@@ -5,7 +5,7 @@ import warnings
 import gym_custom
 from gym_custom.spaces import Box
 from gym_custom import utils
-from gym_custom.envs.mujoco import MujocoEnv
+# from gym_custom.envs.mujoco import MujocoEnv
 from gym_custom.envs.custom.dual_ur3_env import DualUR3Env
 from gym_custom.envs.custom.ur_utils import URScriptWrapper, URScriptWrapper_DualUR3
 from gym_custom import Wrapper
