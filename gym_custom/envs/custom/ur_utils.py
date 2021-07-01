@@ -55,7 +55,8 @@ class HorizontalConstraint(NullObjectiveBase):
 class SO3Constraint(NullObjectiveBase):
     '''
     Current DualUR3Env 기준 :
-    vertical(side): np.array([[1,0,0], [0,-1,0], [0,0,-1]]) 
+    vertical(side): np.array([[1,0,0], [0,-1,0], [0,0,-1]])
+    vertical(side-180): np.array([[-1,0,0], [0,1,0], [0,0,-1]])  
     vertical(front): np.array([[0,1,0], [1,0,0], [0,0,-1]])
     horizontal(right, side): np.array([[0,0,-1], [0,-1,0], [-1,0,0]])
     horizontal(left, side): np.array([[0,0,1], [0,-1,0], [1,0,0]])
@@ -76,7 +77,10 @@ class SO3Constraint(NullObjectiveBase):
         if SO3 is None:
             self.SO3_des = np.eye(3)
         elif SO3 == 'vertical_side':
-            self.SO3_des = np.array([[1,0,0], [0,-1,0], [0,0,-1]]) 
+            # self.SO3_des = np.array([[1,0,0], [0,-1,0], [0,0,-1]]) 
+            self.SO3_des = np.array([[-1,0,0], [0,1,0], [0,0,-1]]) 
+        # elif SO3 == 'vertical_side-180':
+        #     self.SO3_des = np.array([[-1,0,0], [0,1,0], [0,0,-1]]) 
         elif SO3 == 'vertical_front':
             self.SO3_des = np.array([[0,1,0], [1,0,0], [0,0,-1]])
         elif SO3 == 'horizontal_right_side':

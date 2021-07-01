@@ -257,12 +257,17 @@ class DualUR3RealEnv(gym_custom.Env):
         self.interface_left.close()
 
     def reset_model(self):
+        #dscho mod
+        self._episode_step = 0
+        self.step({'right' :{'open_gripper' : {}} , 'left' : {'open_gripper' : {}}})
+        time.sleep(2.0)
+
         # TODO: Send commands to both arms simultaneously?
         self.interface_right.movej(q=self._init_qpos[:6])
         self.interface_left.movej(q=self._init_qpos[6:])
         self.interface_right.move_gripper(g=self._init_gripperpos[:1])
         self.interface_left.move_gripper(g=self._init_gripperpos[1:])
-        self._episode_step = 0
+        # self._episode_step = 0
         return self._get_obs()
 
     def get_obs_dict(self, wait=True):
@@ -337,7 +342,7 @@ def servoj_speedj_example(host_ip_right, host_ip_left, rate):
     
     # close-open-close gripper
     print('close')
-    real_env.step({'right': {'close_gripper': {}}, 'left': {'close_gripper': {}}})
+    # real_env.step({'right': {'close_gripper': {}}, 'left': {'close_gripper': {}}})
     time.sleep(3.0)
     print('open')
     real_env.step({'right': {'open_gripper': {}}, 'left': {'open_gripper': {}}})
@@ -412,13 +417,13 @@ def servoj_speedj_example(host_ip_right, host_ip_left, rate):
     
     # open-close-open gripper
     print('open')
-    real_env.step({'right': {'close_gripper': {}}, 'left': {'close_gripper': {}}})
-    time.sleep(3.0)
-    print('close')
     real_env.step({'right': {'open_gripper': {}}, 'left': {'open_gripper': {}}})
     time.sleep(3.0)
-    print('open')
+    print('close')
     real_env.step({'right': {'close_gripper': {}}, 'left': {'close_gripper': {}}})
+    time.sleep(3.0)
+    print('open')
+    real_env.step({'right': {'open_gripper': {}}, 'left': {'open_gripper': {}}})
     time.sleep(5.0)
 
 if __name__ == "__main__":

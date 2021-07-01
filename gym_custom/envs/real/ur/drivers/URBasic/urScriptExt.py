@@ -88,6 +88,11 @@ class UrScriptExt(URBasic.urScript.UrScript):
         self.rob.send_program(self.robotiqgrip.ret_program_to_run())
         self.robotiqgrip.reset()
     
+    def force_gripper(self, force):
+        self.robotiqgrip.force_gripper(force)
+        self.rob.send_program(self.robotiqgrip.ret_program_to_run())
+        self.robotiqgrip.reset()
+
     def get_gripper_position(self):
         raise NotImplementedError   
         self.robotiqgrip.get_gripper_position()
