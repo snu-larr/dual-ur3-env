@@ -2,15 +2,19 @@
 
 <mujoco>
     <!--Simulator Options-->
-    <compiler inertiafromgeom="auto" angle="radian" coordinate="local" eulerseq="XYZ" meshdir="../meshes" texturedir="../textures"/>
+    <!-- <compiler inertiafromgeom="auto" angle="radian" coordinate="local" eulerseq="XYZ" meshdir="../meshes" texturedir="../textures"/>
     <option timestep='0.005' iterations="50" tolerance="1e-10" solver="Newton" jacobian="dense" cone="elliptic" noslip_iterations="10"
-        gravity="0 0 -9.81" /> <!-- dscho mod timestep from 0.002 to 0.005. 0.01 fails(Nan value occurs)-->
+        gravity="0 0 -9.81" /> -->
+    <!-- dscho mod timestep from 0.002 to 0.005. 0.01 fails(Nan value occurs)-->
+
+    <compiler inertiafromgeom="auto" angle="radian" coordinate="local" eulerseq="XYZ" meshdir="../meshes" texturedir="../textures"/>
+    <option timestep='0.005'/>
 
     <!--Defaults-->
     <default>
-        <joint damping="1" stiffness="0" user="0"/>
+        <!-- <joint damping="1" stiffness="0" user="0"/>
         <geom solref="0.02 1" solimp="1 1 0"/>
-        <motor ctrllimited="true" ctrlrange="-1 1"/>
+        <motor ctrllimited="true" ctrlrange="-1 1"/> -->
     </default>
 
     <!--Camera Light-->

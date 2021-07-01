@@ -19,6 +19,9 @@
         <exclude body1="right_gripper:r_gripper_finger_link" body2="right_ee_link"></exclude>
         <exclude body1="right_gripper:l_gripper_finger_link" body2="right_ee_link"></exclude>
          
+        <!-- Prevent collision between Flat gripper(Referenced. Fetch )-->
+        <exclude body1="right_gripper:r_gripper_finger_link" body2="right_gripper:l_gripper_finger_link"></exclude>
+
          <!-- Prevent collision between Robotiq Gripper & Object  -->
         <exclude body1="right_ee_link" body2="obj"></exclude>
         <exclude body1="left_ee_link" body2="obj"></exclude>
@@ -140,9 +143,9 @@
             <!-- <geom size="0.025 0.025 0.025" type="box" condim="3" name="obj" material="block_mat" mass="0.1"></geom> -->
             
             <!-- from my env -->
-            <joint name="objjoint" type="free" limited='false' damping="0.01"></joint>
+            <joint name="objjoint" type="free" damping="0.01"></joint>
             <!-- <geom size="0.02 0.02 0.035" type="box" name="objGeom" density="2000" friction="2 0.1 0.002" condim="3"></geom>  -->
-            <geom size="0.02 0.02 0.02" type="box" condim="3" name="objGeom" material="block_mat" mass="0.1"></geom>
+            <geom size="0.025 0.025 0.025" type="box" condim="3" name="objGeom" material="block_mat" mass="2" ></geom>
             <!-- material="block_mat"  mass="1"-->
          
 			<site name="objSite" pos="0 0 0" size="0.01 0.01 0.01" rgba="1 0 0 1" type="sphere"></site>
@@ -229,10 +232,10 @@
         <motor name="left_close_l" joint="left_gripper:left_fingertip:slide:control" ctrlrange="-150 250" /> -->
         
         <!-- originally, kp=30000-->
-        <position ctrllimited="true" ctrlrange="0 0.2" joint="right_gripper:r_gripper_finger_joint" kp="3000" name="right_gripper:r_gripper_finger_joint" user="1"></position>
-		<position ctrllimited="true" ctrlrange="0 0.2" joint="right_gripper:l_gripper_finger_joint" kp="3000" name="right_gripper:l_gripper_finger_joint" user="1"></position>
-        <position ctrllimited="true" ctrlrange="0 0.2" joint="left_gripper:r_gripper_finger_joint" kp="3000" name="left_gripper:r_gripper_finger_joint" user="1"></position>
-		<position ctrllimited="true" ctrlrange="0 0.2" joint="left_gripper:l_gripper_finger_joint" kp="3000" name="left_gripper:l_gripper_finger_joint" user="1"></position>
+        <position ctrllimited="true" ctrlrange="0 0.2" joint="right_gripper:r_gripper_finger_joint" kp="30000" name="right_gripper:r_gripper_finger_joint" user="1"></position>
+		<position ctrllimited="true" ctrlrange="0 0.2" joint="right_gripper:l_gripper_finger_joint" kp="30000" name="right_gripper:l_gripper_finger_joint" user="1"></position>
+        <position ctrllimited="true" ctrlrange="0 0.2" joint="left_gripper:r_gripper_finger_joint" kp="30000" name="left_gripper:r_gripper_finger_joint" user="1"></position>
+		<position ctrllimited="true" ctrlrange="0 0.2" joint="left_gripper:l_gripper_finger_joint" kp="30000" name="left_gripper:l_gripper_finger_joint" user="1"></position>
     </actuator>
 
 </mujoco>

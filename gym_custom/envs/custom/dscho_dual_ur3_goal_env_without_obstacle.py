@@ -14,6 +14,8 @@ from gym_custom.envs.custom.ur_utils import SO3Constraint, UprightConstraint, No
 import tensorflow as tf
 import joblib
 import time
+import mujoco_py
+from gym_custom.envs.robotics import rotations #, robot_env, utils
 color2num = dict(
     gray=30,
     red=31,
@@ -306,7 +308,8 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
                 serializable_initialized = False, 
                 so3_constraint='vertical_side', 
                 action_downscale=0.01,
-                gripper_force_scale = 50, 
+                gripper_force_scale = 50,
+                flat_gripper = False, 
                 *args, 
                 **kwargs
                 ):
@@ -332,6 +335,7 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
 
         self.multi_step = multi_step
         self.gripper_action = gripper_action
+        self.flat_gripper = flat_gripper
         self.dt = self.env.dt*multi_step
 
         self.speedj_args = {'a': 5, 't': None, 'wait': None}
@@ -387,10 +391,11 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
     def reset(self, **kwargs):
         # return self.env.reset(**kwargs)
         obs = super().reset(**kwargs)
-        if self.env.task in ['pickandplace'] and self.env.warm_start:
+        if self.env.task in ['pickandplace'] and self.env.warm_start: #reset할때 어느정도 잡고 시작하게끔?
             # close gripper near the object
-            # ur3_act = np.zeros(self.ee_xyz_pos_dim)            
-            for i in range(20): # enough time to succeed for grasping
+            # ur3_act = np.zeros(self.ee_xyz_pos_dim)
+            repeat = 1 if self.flat_gripper else 20
+            for i in range(repeat): # enough time to succeed for grasping
                 # gripper_act = np.array([self.gripper_force_scale]) # closing action
                 # gripper_act, distance = self._gripper_action_clip(gripper_act)
                 # print('distance in wrapper reset warm start : {} gripper act : {}'.format(distance, gripper_act))
@@ -405,7 +410,7 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
                     left_gripper_right_state = self.env.data.get_site_xpos('left_gripper:rightEndEffector')
                     left_gripper_left_state = self.env.data.get_site_xpos('left_gripper:leftEndEffector')
                     distance = np.linalg.norm(left_gripper_right_state - left_gripper_left_state, axis =-1)
-                print('distance in wrapper reset warm start : {} '.format(distance))
+                # print('distance in wrapper reset warm start : {} '.format(distance))
                 if distance <= 0.07: #충분히 grasp했다 판단
                     break
         return obs
@@ -421,17 +426,20 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
         ur3_act = action[:self.ee_xyz_pos_dim] # delta xyz pos of ee
         
         if self.gripper_action:
+            
             gripper_act = self.gripper_force_scale*action[-self.gripper_act_dim:]
             
-        
             if self.env.block_gripper: # close gripper
                 gripper_act = 50*np.ones_like(gripper_act)
             else:
                 # To control closing speed w.r.t. how much the gripper is closed
-                gripper_act, distance = self._gripper_action_clip(gripper_act)                    
-                print('distance in wrapper step : {} grip : {}'.format(distance, gripper_act))
+                if self.flat_gripper:
+                    pass
+                else:
+                    gripper_act, distance = self._gripper_action_clip(gripper_act)                    
+                    # print('distance in wrapper step : {} grip : {}'.format(distance, gripper_act))s
 
-            # print('gripper act : ', gripper_act)
+            
         else :
             gripper_act = np.zeros(self.gripper_act_dim)
         
@@ -442,7 +450,8 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
             desired_ee_pos = ee_pos + ur3_act
             start = time.time()
             # ee_pos, null_obj_func, arm, q_init='current', threshold=0.01, threshold_null=0.001, max_iter=100, epsilon=1e-6
-            q_des, iter_taken, err, null_obj = self.inverse_kinematics_ee(desired_ee_pos, self.null_obj_func, arm='right', threshold=0.001, max_iter = 10)
+            q_des, iter_taken, err, null_obj = self.inverse_kinematics_ee(desired_ee_pos, self.null_obj_func, arm='right', threshold=0.001, max_iter = 5)
+            
             # print('iter taken : {}, time : {}'.format(iter_taken, time.time()-start))
             if self.q_control_type =='speedj':
                 right_ur3_action = (q_des-current_qpos)/(self.dt)
@@ -458,7 +467,7 @@ class EndEffectorPositionControlSingleWrapper(URScriptWrapper_DualUR3):
             current_qpos = self._get_ur3_qpos()[self.ur3_nqpos:]
             desired_ee_pos = ee_pos + ur3_act
             start = time.time()
-            q_des, iter_taken, err, null_obj = self.inverse_kinematics_ee(desired_ee_pos, self.null_obj_func, arm='left', threshold=0.001, max_iter = 10)
+            q_des, iter_taken, err, null_obj = self.inverse_kinematics_ee(desired_ee_pos, self.null_obj_func, arm='left', threshold=0.001, max_iter = 5)
             # print('iter taken : {}, time : {}'.format(iter_taken, time.time()-start))
             if self.q_control_type =='speedj':
                 left_ur3_action = (q_des-current_qpos)/(self.dt)
@@ -664,12 +673,126 @@ class EndEffectorPositionControlDualWrapper(URScriptWrapper_DualUR3):
         return getattr(self.env, name)
 
 
-class DSCHODualUR3Env(DualUR3Env):
-    def __init__(self, ur3_random_init_so3_constraint = 'vertical_side', *args, **kwargs):
+
+class DualUR3Gripper(DualUR3Env):
+    def __init__(self, flat_gripper = False, *args, **kwargs):
+        
+        self.flat_gripper = flat_gripper
+        self.flat_gripper_nqpos = 0 # per gripper joint pos dim
+        self.flat_gripper_nqvel = 0 # per gripper joint vel dim
+        self.flat_gripper_nact = 0 # per gripper action dim
+        if flat_gripper :
+            self.flat_gripper_nqpos = 2 # per gripper joint pos dim
+            self.flat_gripper_nqvel = 2 # per gripper joint vel dim
+            self.flat_gripper_nact = 2 # per gripper action dim
+        
+        super().__init__(*args, **kwargs)
+        
+        if flat_gripper:
+            assert 'flat_gripper' in self.xml_filename
+
+
+    def _check_model_parameter_dimensions(self):
+        '''overridable method'''
+        assert 2*self.ur3_nqpos + 2*self.gripper_nqpos + sum(self.objects_nqpos) + 2*self.flat_gripper_nqpos == self.model.nq, 'Number of qpos elements mismatch'
+        assert 2*self.ur3_nqvel + 2*self.gripper_nqvel + sum(self.objects_nqvel) + 2*self.flat_gripper_nqvel == self.model.nv, 'Number of qvel elements mismatch'
+        assert 2*self.ur3_nact + 2*self.gripper_nact == self.model.nu, 'Number of action elements mismatch'
+
+    def _set_init_qpos(self):
+        '''overridable method'''
+        # Initial position for UR3
+        # dscho mod
+        if self.ur3_random_init:
+            pass
+        if self.initMode is None :
+            self.init_qpos[0:self.ur3_nqpos] = \
+                np.array([-90.0, -90.0, -90.0, -90.0, -135.0, 180.0])*np.pi/180.0 # right arm
+            self.init_qpos[self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos] = \
+                np.array([90.0, -90.0, 90.0, -90.0, 135.0, -180.0])*np.pi/180.0 # left arm
+        elif self.initMode =='vertical':
+            self.init_qpos[0:self.ur3_nqpos] = \
+                np.array([-0.32213427, -1.81002217, -1.87559869, -1.72603011, -1.79932887,  1.82011286]) # right arm
+            self.init_qpos[self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos] = \
+                np.array([ 0.3209594,  -1.33282653,  1.87653391, -1.41410399, 1.79674747, -1.81847637])# left arm
+        elif self.initMode =='horizontal':
+            # horizontal init
+            self.init_qpos[0:self.ur3_nqpos] = \
+                np.array([ 1.82496873, -1.78037016,  1.86075417,  4.40278818,  5.47660708, -2.8826006]) # right arm
+            self.init_qpos[self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos] = \
+                np.array([-1.85786483, -1.3540493,  -1.89351501, -1.18579177,  0.82976128, -0.50789828])# left arm
+        else :
+            raise NotImplementedError
+
+    def _get_ur3_qpos(self):
+        return np.concatenate([self.sim.data.qpos[0:self.ur3_nqpos], 
+            self.sim.data.qpos[self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos]]).ravel()
+
+    def _get_gripper_qpos(self):
+        return np.concatenate([self.sim.data.qpos[self.ur3_nqpos:self.ur3_nqpos+self.gripper_nqpos], 
+            self.sim.data.qpos[2*self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+2*self.gripper_nqpos]]).ravel()
+    
+    def _get_flat_gripper_qpos(self):
+        return np.concatenate([self.sim.data.qpos[self.ur3_nqpos+self.gripper_nqpos:self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos], 
+            self.sim.data.qpos[2*self.ur3_nqpos+2*self.gripper_nqpos+self.flat_gripper_nqpos:2*self.ur3_nqpos+2*self.gripper_nqpos+2*+self.flat_gripper_nqpos]]).ravel()
+
+    def _get_ur3_qvel(self):
+        return np.concatenate([self.sim.data.qvel[0:self.ur3_nqvel], 
+            self.sim.data.qvel[self.ur3_nqvel+self.gripper_nqvel+self.flat_gripper_nqvel:2*self.ur3_nqvel+self.gripper_nqvel+self.flat_gripper_nqvel]]).ravel()
+
+    def _get_gripper_qvel(self):
+        return np.concatenate([self.sim.data.qvel[self.ur3_nqvel:self.ur3_nqvel+self.gripper_nqvel], 
+            self.sim.data.qvel[2*self.ur3_nqvel+self.gripper_nqvel:2*self.ur3_nqvel+2*self.gripper_nqvel]]).ravel()
+
+    def _get_flat_gripper_qvel(self):
+        return np.concatenate([self.sim.data.qvel[self.ur3_nqvel+self.gripper_nqvel:self.ur3_nqvel+self.gripper_nqvel+self.flat_gripper_nqvel], 
+            self.sim.data.qvel[2*self.ur3_nqvel+2*self.gripper_nqvel+self.flat_gripper_nqvel:2*self.ur3_nqvel+2*self.gripper_nqvel+2*+self.flat_gripper_nqvel]]).ravel()
+
+    def _get_ur3_bias(self):
+        return np.concatenate([self.sim.data.qfrc_bias[0:self.ur3_nqvel], 
+            self.sim.data.qfrc_bias[self.ur3_nqvel+self.gripper_nqvel+self.flat_gripper_nqvel:2*self.ur3_nqvel+self.gripper_nqvel+self.flat_gripper_nqvel]]).ravel()
+
+    def _get_gripper_bias(self):
+        return np.concatenate([self.sim.data.qfrc_bias[self.ur3_nqvel:self.ur3_nqvel+self.gripper_nqvel], 
+            self.sim.data.qfrc_bias[2*self.ur3_nqvel+self.gripper_nqvel:2*self.ur3_nqvel+2*self.gripper_nqvel]]).ravel()
+
+    def _get_flat_gripper_bias(self):
+        raise NotImplementedError()
+
+    def _get_ur3_constraint(self):
+        return np.concatenate([self.sim.data.qfrc_constraint[0:self.ur3_nqvel], 
+            self.sim.data.qfrc_constraint[self.ur3_nqvel+self.gripper_nqvel+self.flat_gripper_nqvel:2*self.ur3_nqvel+self.gripper_nqvel+self.flat_gripper_nqvel]]).ravel()
+
+    def _get_ur3_actuator(self):
+        return np.concatenate([self.sim.data.qfrc_actuator[0:self.ur3_nqvel], 
+            self.sim.data.qfrc_actuator[self.ur3_nqvel+self.gripper_nqvel+self.flat_gripper_nqvel:2*self.ur3_nqvel+self.gripper_nqvel+self.flat_gripper_nqvel]]).ravel()
+
+    def get_obs_dict(self):
+        '''overridable method'''
+        return {'right': {
+                'qpos': self._get_ur3_qpos()[:self.ur3_nqpos],
+                'qvel': self._get_ur3_qvel()[:self.ur3_nqvel],
+                'gripperpos': self._get_gripper_qpos()[:self.gripper_nqpos],
+                'grippervel': self._get_gripper_qvel()[:self.gripper_nqvel],
+                'flat_gripperpos' : self._get_flat_gripper_qpos()[:self.flat_gripper_nqpos],
+                'flat_grippervel' : self._get_flat_gripper_qvel()[:self.flat_gripper_nqvel],
+            },
+            'left': {
+                'qpos': self._get_ur3_qpos()[self.ur3_nqpos:],
+                'qvel': self._get_ur3_qvel()[self.ur3_nqvel:],
+                'gripperpos': self._get_gripper_qpos()[self.gripper_nqpos:],
+                'grippervel':self._get_gripper_qvel()[self.gripper_nqvel:],
+                'flat_gripperpos' : self._get_flat_gripper_qpos()[self.flat_gripper_nqpos:],
+                'flat_grippervel' : self._get_flat_gripper_qvel()[self.flat_gripper_nqvel:],
+            }
+        }
+        
+
+class DSCHODualUR3Env(DualUR3Gripper):
+    def __init__(self,  *args, **kwargs):
         self.save_init_params(locals())
         self.init_qpos_candidates = {}
-        self.ur3_random_init_so3_constraint = ur3_random_init_so3_constraint
-        self.null_obj_func = SO3Constraint(SO3=self.ur3_random_init_so3_constraint)
+        # self.ur3_random_init_so3_constraint = ur3_random_init_so3_constraint
+        # self.null_obj_func = SO3Constraint(SO3=self.ur3_random_init_so3_constraint)
         # 양팔 널찍이 벌려있는 상태
         # default_right_qpos = np.array([[-90.0, -90.0, -90.0, -90.0, -135.0, 180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
         default_left_qpos = np.array([[90.0, -90.0, 90.0, -90.0, 135.0, -180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
@@ -681,14 +804,19 @@ class DSCHODualUR3Env(DualUR3Env):
         # [0.15, -0.35, 0.9]
         # default_right_qpos = np.array([[-0.90259643, -2.24937667, -1.82423119, -1.23998854, -2.15827838,  2.2680261 ]])
         # [0.15, -0.35, 0.8]
-        default_right_qpos = np.array([[-0.76263046, -2.21085609, -1.50821658, -1.57404046, -2.08100962, 2.19369591]])
+
+        if self.init_qpos_type=='upright':
+            default_right_qpos = np.array([[-90.0, -90.0, -90.0, -90.0, 90.0, 180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
+        else:
+            default_right_qpos = np.array([[-0.76263046, -2.21085609, -1.50821658, -1.57404046, -2.08100962, 2.19369591]])
+        
         # default_left_qpos = np.array([[0.73490191, -1.22867589, 1.78775333, -1.53617814, 2.07956014, -2.16994491]])
         
         # add default qpos configuration        
         self.init_qpos_candidates['q_right_des'] =default_right_qpos
         self.init_qpos_candidates['q_left_des'] = default_left_qpos
-        self.init_qpos_candidates['gripper_q_right_close'] = np.array([[0.70005217, 0.01419325, 0.0405478, 0.0134475, 0.74225534, 0.70005207, 0.01402114, 0.04054553, 0.01344841, 0.74224361]])
-        self.init_qpos_candidates['gripper_q_left_close'] = np.array([[0.70005217, 0.01419325, 0.0405478, 0.0134475, 0.74225534, 0.70005207, 0.01402114, 0.04054553, 0.01344841, 0.74224361]])
+        # self.init_qpos_candidates['gripper_q_right_close'] = np.array([[0.70005217, 0.01419325, 0.0405478, 0.0134475, 0.74225534, 0.70005207, 0.01402114, 0.04054553, 0.01344841, 0.74224361]])
+        # self.init_qpos_candidates['gripper_q_left_close'] = np.array([[0.70005217, 0.01419325, 0.0405478, 0.0134475, 0.74225534, 0.70005207, 0.01402114, 0.04054553, 0.01344841, 0.74224361]])
 
         # for push or reach (closed gripper)
         if self.task in ['push', 'reach']:
@@ -704,35 +832,69 @@ class DSCHODualUR3Env(DualUR3Env):
 
     def _get_init_qpos(self):
 
+        # init_qpos = self.init_qpos.copy()
+        # if self.ur3_random_init:            
+        #     # randomly initilize ee pos. IK's q is default qpos (when no random init)
+        #     q_right_des_candidates = self.init_qpos_candidates['q_right_des'] # [num_candidate, qpos dim]
+        #     q_left_des_candidates = self.init_qpos_candidates['q_left_des']
+        #     assert q_right_des_candidates.shape[0] == q_left_des_candidates.shape[0]
+
+        #     right_ee_random_init_low = np.array([0.0, -0.45, 0.79])
+        #     right_ee_random_init_high = np.array([0.3, -0.25, 0.8])
+        #     left_ee_random_init_low = np.array([-0.3, -0.45, 0.79])
+        #     left_ee_random_init_high = np.array([0.0, -0.25, 0.8])
+
+        #     right_ee_random_init_space = Box(low=right_ee_random_init_low, high=right_ee_random_init_high, dtype=np.float32)
+        #     left_ee_random_init_space = Box(low=left_ee_random_init_low, high=left_ee_random_init_high, dtype=np.float32)
+
+        #     right_ee_pos = right_ee_random_init_space.sample()
+        #     left_ee_pos = left_ee_random_init_space.sample()
+            
+        #     right_q_des, right_q_iter, right_err, right_null_obj_val = self.inverse_kinematics_ee(ee_pos = right_ee_pos,null_obj_func = self.null_obj_func, arm= 'right',q_init=q_right_des_candidates[0], max_iter=5)
+        #     left_q_des, left_q_iter, left_err, left_null_obj_val = self.inverse_kinematics_ee(ee_pos = left_ee_pos,null_obj_func = self.null_obj_func, arm= 'left',q_init=q_left_des_candidates[0], max_iter=5)
+            
+        #     init_qpos[0:self.ur3_nqpos] = right_q_des
+        #     init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = left_q_des
+
+        #     # num_candidates = q_right_des_candidates.shape[0]
+        #     # right_idx = np.random.choice(num_candidates,1) 
+        #     # left_idx = np.random.choice(num_candidates,1) 
+        #     # init_qpos[0:self.ur3_nqpos] = q_right_des_candidates[right_idx]
+        #     # init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = q_left_des_candidates[left_idx]
+
+        # else :
+        #     # Currently for dual env test with 0th index init qpos
+        #     q_right_des_candidates = self.init_qpos_candidates['q_right_des'] # [num_candidate, qpos dim]
+        #     q_left_des_candidates = self.init_qpos_candidates['q_left_des']
+            
+        #     right_idx = 0
+        #     left_idx = 0
+        #     init_qpos[0:self.ur3_nqpos] = q_right_des_candidates[right_idx]
+        #     init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = q_left_des_candidates[left_idx]
+        
+        # if self.task in ['push', 'reach']: # initially, close gripper
+        #     gripper_q_right_des_candidates = self.init_qpos_candidates['gripper_q_right_des']
+        #     gripper_q_left_des_candidates = self.init_qpos_candidates['gripper_q_left_des']
+        #     right_idx = 0
+        #     left_idx = 0
+        #     init_qpos[self.ur3_nqpos:self.ur3_nqpos + self.gripper_nqpos] = gripper_q_right_des_candidates[right_idx]
+        #     init_qpos[2*self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+2*self.gripper_nqpos] = gripper_q_left_des_candidates[left_idx]
+        
+        
+        #############################################
+
         init_qpos = self.init_qpos.copy()
-        if self.ur3_random_init:            
-            # randomly initilize ee pos. IK's q is default qpos (when no random init)
+        if self.ur3_random_init:
             q_right_des_candidates = self.init_qpos_candidates['q_right_des'] # [num_candidate, qpos dim]
             q_left_des_candidates = self.init_qpos_candidates['q_left_des']
+            
             assert q_right_des_candidates.shape[0] == q_left_des_candidates.shape[0]
 
-            right_ee_random_init_low = np.array([0.0, -0.45, 0.79])
-            right_ee_random_init_high = np.array([0.3, -0.25, 0.8])
-            left_ee_random_init_low = np.array([-0.3, -0.45, 0.79])
-            left_ee_random_init_high = np.array([0.0, -0.25, 0.8])
-
-            right_ee_random_init_space = Box(low=right_ee_random_init_low, high=right_ee_random_init_high, dtype=np.float32)
-            left_ee_random_init_space = Box(low=left_ee_random_init_low, high=left_ee_random_init_high, dtype=np.float32)
-
-            right_ee_pos = right_ee_random_init_space.sample()
-            left_ee_pos = left_ee_random_init_space.sample()
-            
-            right_q_des, right_q_iter, right_err, right_null_obj_val = self.inverse_kinematics_ee(ee_pos = right_ee_pos,null_obj_func = self.null_obj_func, arm= 'right',q_init=q_right_des_candidates[0], max_iter=5)
-            left_q_des, left_q_iter, left_err, left_null_obj_val = self.inverse_kinematics_ee(ee_pos = left_ee_pos,null_obj_func = self.null_obj_func, arm= 'left',q_init=q_left_des_candidates[0], max_iter=5)
-            
-            init_qpos[0:self.ur3_nqpos] = right_q_des
-            init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = left_q_des
-
-            # num_candidates = q_right_des_candidates.shape[0]
-            # right_idx = np.random.choice(num_candidates,1) 
-            # left_idx = np.random.choice(num_candidates,1) 
-            # init_qpos[0:self.ur3_nqpos] = q_right_des_candidates[right_idx]
-            # init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = q_left_des_candidates[left_idx]
+            num_candidates = q_right_des_candidates.shape[0]
+            right_idx = np.random.choice(num_candidates,1) 
+            left_idx = np.random.choice(num_candidates,1) 
+            init_qpos[0:self.ur3_nqpos] = q_right_des_candidates[right_idx]
+            init_qpos[self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos] = q_left_des_candidates[left_idx]
 
         else :
             # Currently for dual env test with 0th index init qpos
@@ -742,19 +904,54 @@ class DSCHODualUR3Env(DualUR3Env):
             right_idx = 0
             left_idx = 0
             init_qpos[0:self.ur3_nqpos] = q_right_des_candidates[right_idx]
-            init_qpos[self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos] = q_left_des_candidates[left_idx]
-        
+            init_qpos[self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos:2*self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos] = q_left_des_candidates[left_idx]
+
+            if self.flat_gripper: # set to opened gripper
+                init_qpos[self.ur3_nqpos+self.gripper_nqpos:self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos] = np.array([0.0, 0.0])
+                init_qpos[2*self.ur3_nqpos+2*self.gripper_nqpos+self.flat_gripper_nqpos:2*self.ur3_nqpos+2*self.gripper_nqpos+2*self.flat_gripper_nqpos] = np.array([0.0, 0.0])
+
         if self.task in ['push', 'reach']: # initially, close gripper
             gripper_q_right_des_candidates = self.init_qpos_candidates['gripper_q_right_des']
             gripper_q_left_des_candidates = self.init_qpos_candidates['gripper_q_left_des']
             right_idx = 0
             left_idx = 0
             init_qpos[self.ur3_nqpos:self.ur3_nqpos + self.gripper_nqpos] = gripper_q_right_des_candidates[right_idx]
-            init_qpos[2*self.ur3_nqpos+self.gripper_nqpos:2*self.ur3_nqpos+2*self.gripper_nqpos] = gripper_q_left_des_candidates[left_idx]
-
+            init_qpos[2*self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos:2*self.ur3_nqpos+2*self.gripper_nqpos+self.flat_gripper_nqpos] = gripper_q_left_des_candidates[left_idx]
+            if self.flat_gripper:
+                #raise NotImplementedError('think closed flat gripper !')
+                # set to closed gripper
+                init_qpos[self.ur3_nqpos+self.gripper_nqpos:self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos] = np.array([0.05, 0.05])
+                init_qpos[2*self.ur3_nqpos+2*self.gripper_nqpos+self.flat_gripper_nqpos:2*self.ur3_nqpos+2*self.gripper_nqpos+2*self.flat_gripper_nqpos] = np.array([0.05, 0.05])
 
         return init_qpos
 
+
+        return init_qpos
+    # def _mujocoenv_init(self):
+    #     '''overridable method'''
+    #     MujocoEnv.__init__(self, self.mujoco_xml_full_path, self.mujocoenv_frame_skip, automatically_set_spaces = self.automatically_set_spaces)
+        
+    #     if not self.automatically_set_spaces:
+    #         # self._env_setup(self._get_init_qpos())
+    #         self._set_action_space()
+    #         # self.do_simulation(self.action_space.sample(), self.frame_skip)
+
+    def _check_model_parameter_dimensions(self):
+        '''overridable method'''
+        if 'flat_gripper' in self.xml_filename:
+            assert 2*self.ur3_nqpos + 2*self.gripper_nqpos + sum(self.objects_nqpos) + 2*self.flat_gripper_nqpos == self.model.nq, 'Number of qpos elements mismatch'
+            assert 2*self.ur3_nqvel + 2*self.gripper_nqvel + sum(self.objects_nqvel) + 2*self.flat_gripper_nqvel == self.model.nv, 'Number of qvel elements mismatch'
+            assert 2*self.ur3_nact + 2*self.flat_gripper_nact == self.model.nu, 'Number of action elements mismatch'
+            # assert 2*self.flat_gripper_nact == self.model.nu, 'Number of action elements mismatch'
+        else:
+            assert 2*self.ur3_nqpos + 2*self.gripper_nqpos + sum(self.objects_nqpos) == self.model.nq, 'Number of qpos elements mismatch'
+            assert 2*self.ur3_nqvel + 2*self.gripper_nqvel + sum(self.objects_nqvel) == self.model.nv, 'Number of qvel elements mismatch'
+            assert 2*self.ur3_nact + 2*self.gripper_nact == self.model.nu, 'Number of action elements mismatch'
+            # assert 2*self.gripper_nact == self.model.nu, 'Number of action elements mismatch'
+    
+    def step(self, action):
+        action = action.copy()
+        raise NotImplementedError('Currently, Not implemented for dual arm. We just overrided it in sigle arm env')
 
     def get_endeff_pos(self, arm):
         if arm == 'right':
@@ -858,6 +1055,7 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         self.task = task
         self.observation_type = observation_type
         self.warm_start = warm_start
+        self.init_qpos_type = 'upright' if 'upright' in xml_filename else None
         # for LEAP(S=G) -> modified for S!=G (20200930)
         # assert (reduced_observation and not full_state_goal) or (not reduced_observation and full_state_goal)
         
@@ -884,9 +1082,11 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         if has_obstacle:
             raise NotImplementedError
 
+        self.previous_ee_pos = None
+        self.previous_obj_pos = None
 
         self.reward_success_criterion = reward_success_criterion
-        #self.automatically_set_spaces = automatically_set_spaces
+        
         self.which_hand = which_hand        
         super().__init__(xml_filename=xml_filename,
                         initMode=initMode, 
@@ -896,15 +1096,12 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
                         **kwargs
                         )
         
-        if not self.automatically_set_spaces:
-            self._set_action_space()
+        # if not self.automatically_set_spaces:
+        #     self._set_action_space()
 
-        # self.obj_init_pos = self.get_obj_pos()
-        # self.obj_names = ['obj']
-        self.left_get_away_qpos = np.concatenate([np.array([-90.0, -90.0, 90.0, -90.0, 135.0, 0.0])*np.pi/180.0, np.zeros(self.gripper_nqpos)]) # it was self.gripper_nqpos
-        self.right_get_away_qpos = np.concatenate([np.array([-90.0, -90.0, 90.0, -90.0, 135.0, 0.0])*np.pi/180.0, np.zeros(self.gripper_nqpos)])
+        self.left_get_away_qpos = np.concatenate([np.array([-90.0, -90.0, 90.0, -90.0, 135.0, 0.0])*np.pi/180.0, np.zeros(self.gripper_nqpos), np.zeros(self.flat_gripper_nqpos)]) # it was self.gripper_nqpos
+        self.right_get_away_qpos = np.concatenate([np.array([-90.0, -90.0, 90.0, -90.0, 135.0, 0.0])*np.pi/180.0, np.zeros(self.gripper_nqpos), np.zeros(self.flat_gripper_nqpos)])
         
-        # if not self.reduced_observation:
         if self.observation_type=='joint_q':
             if self.trigonometry_observation:
                 self.obs_nqpos = self.ur3_nqpos*2
@@ -915,7 +1112,11 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
             self.obs_nqpos = 3 # ee_pos
         elif self.observation_type =='ee_object_all':
             assert not self.trigonometry_observation
-            raise NotImplementedError
+            # raise NotImplementedError
+            self.obs_nqpos = None
+        elif self.observation_type=='ee_object_pos_w_grip_custom_vel':
+            self.obs_nqpos = None
+        elif self.observation_type=='ee_object_pos_w_grip':
             self.obs_nqpos = None
 
         qpos_low = -np.ones(int(self.ur3_nqpos))*2*np.pi
@@ -933,6 +1134,10 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         elif self.which_hand =='left':
             ee_low = np.array([-0.35, -0.5, 0.77])
             ee_high = np.array([0.1, -0.2, 0.95])
+        
+        if self.init_qpos_type == 'upright': # right 기준
+            ee_low = np.array([-0.2, -0.5, 0.77])
+            ee_high = np.array([0.2, -0.2, 0.95])
 
         self.goal_ee_pos_space = Box(low = ee_low, high = ee_high, dtype=np.float32)
         
@@ -944,6 +1149,10 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         elif self.which_hand =='left':
             goal_obj_low = np.array([-0.3, -0.45, 0.77])
             goal_obj_high = np.array([0.0, -0.3, 0.95])
+        
+        if self.init_qpos_type == 'upright': # right 기준
+            goal_obj_low = np.array([-0.15, -0.45, 0.77])
+            goal_obj_high = np.array([0.15, -0.3, 0.95])
 
         self.goal_obj_pos_space = Box(low = goal_obj_low, high = goal_obj_high, dtype=np.float32)
         
@@ -962,7 +1171,7 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         
         self.observation_space = self._set_observation_space(observation) 
     
-        
+    
     # goal space == state space
     # ee_pos 뽑고, 그에 따른 qpos 계산(IK) or qpos뽑고 그에따른 ee_pos 계산(FK)
     # 우선은 후자로 생각(어처피 학습할땐 여기저기 goal 다 뽑고, 쓸때는 제한해서 goal 샘플할꺼니까)
@@ -1027,17 +1236,17 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
 
     def reset_model(self):
         
-        qpos = self._get_init_qpos() + self.np_random.uniform(size=self.model.nq, low=-0.01, high=0.01)
+        qpos = self._get_init_qpos() #+ self.np_random.uniform(size=self.model.nq, low=-0.01, high=0.01)
         qvel = self.init_qvel + self.np_random.uniform(size=self.model.nv, low=-0.01, high=0.01)
         
-        if self.which_hand == 'right':
-            start_p, end_p = self.ur3_nqpos+self.gripper_nqpos, 2*self.ur3_nqpos+2*self.gripper_nqpos
-            start_v, end_v = self.ur3_nqvel+self.gripper_nqvel, 2*self.ur3_nqvel+2*self.gripper_nqvel
-            qpos[start_p:end_p] = self.left_get_away_qpos
-        elif self.which_hand == 'left':
-            start_p, end_p = 0, self.ur3_nqpos+self.gripper_nqpos
-            start_v, end_v = 0, self.ur3_nqvel+self.gripper_nqvel
-            qpos[start_p:end_p] = self.right_get_away_qpos
+        # if self.which_hand == 'right':
+        #     start_p, end_p = self.ur3_nqpos+self.gripper_nqpos, 2*self.ur3_nqpos+2*self.gripper_nqpos
+        #     start_v, end_v = self.ur3_nqvel+self.gripper_nqvel, 2*self.ur3_nqvel+2*self.gripper_nqvel
+        #     qpos[start_p:end_p] = self.left_get_away_qpos
+        # elif self.which_hand == 'left':
+        #     start_p, end_p = 0, self.ur3_nqpos+self.gripper_nqpos
+        #     start_v, end_v = 0, self.ur3_nqvel+self.gripper_nqvel
+        #     qpos[start_p:end_p] = self.right_get_away_qpos
             
         self.set_state(qpos, qvel)
 
@@ -1053,7 +1262,7 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
                                     self.goal_obj_pos_space.high,
                                     size=(self.goal_obj_pos_space.low.size),
                                 )[:2]
-                    object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
+                    object_pos = np.concatenate([object_xpos, np.array([0.75])], axis=-1)
                     
                     
                     while np.linalg.norm(object_pos - ee_pos) < 0.05:
@@ -1062,7 +1271,7 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
                                     self.goal_obj_pos_space.high,
                                     size=(self.goal_obj_pos_space.low.size),
                                 )[:2]
-                        object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
+                        object_pos = np.concatenate([object_xpos, np.array([0.75])], axis=-1)
                     # print('In reset model, ee pos : {} obj pos : {}'.format(ee_pos, object_pos))
 
                 object_qpos = self.sim.data.get_joint_qpos('objjoint')
@@ -1080,6 +1289,9 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         
         self.sim.forward()
         
+        self.previous_ee_pos = None
+        self.previous_obj_pos = None
+
         observation = self._get_obs()
 
         # observation = super().reset_model() # init qpos,qvel set_state and get_obs
@@ -1119,11 +1331,7 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         self.info = copy.deepcopy(info)
 
         self._set_goal_marker(self._state_goal)
-        # self._set_subgoal_marker(self._state_subgoals)
-        # self._set_finalgoal_marker(self._state_finalgoal)
         self.curr_path_length = 0
-        # self._set_obj_xyz(np.array([0.0, -0.8, 0.65]))
-        # original_ob['desired_goal'] = self._state_goal
         return observation
         
     # Only ur3 qpos,vel(not include gripper), object pos(achieved_goal), desired_goal
@@ -1141,22 +1349,73 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         
         if self.trigonometry_observation:
             qpos = np.concatenate([np.cos(qpos), np.sin(qpos)], axis = -1)
-
+        
+        dt = self.sim.nsubsteps * self.sim.model.opt.timestep # same as self.dt
+        
         if self.has_object:
             obj_pos = self.get_obj_pos(name='obj')
+            obj_rot = rotations.mat2euler(self.sim.data.get_site_xmat('objSite'))
+            # velocities
+            obj_velp = self.sim.data.get_site_xvelp('objSite') * dt
+            obj_velr = self.sim.data.get_site_xvelr('objSite') * dt
+            obj_rel_pos = obj_pos - ee_pos
+            # print('obj rel pos : {}'.format(obj_rel_pos))
+            
         else :
-            obj_pos = np.array([])
+            obj_pos = obj_rot = obj_velp = obj_velr = obj_rel_pos = np.zeros(0)
+        
+        # ee_xpos= self.sim.data.get_body_xpos(self.which_hand + '_gripper:hand')
+        ee_velp = self.sim.data.get_body_xvelp(self.which_hand + '_gripper:hand')*dt
+        
+        if self.flat_gripper:                
+            gripper_state = np.array([self.sim.data.get_joint_qpos(self.which_hand+'_gripper:r_gripper_finger_joint'),
+                                    self.sim.data.get_joint_qpos(self.which_hand+'_gripper:l_gripper_finger_joint'),
+                                    ])
+            gripper_vel = np.array([self.sim.data.get_joint_qvel(self.which_hand+'_gripper:r_gripper_finger_joint'),
+                                    self.sim.data.get_joint_qvel(self.which_hand+'_gripper:l_gripper_finger_joint'),
+                                    ])*dt
+            
+        else:
+            right_slide_joint_qpos = self.sim.data.get_joint_qpos(self.which_hand+'_gripper:right_fingertip:slide:control')
+            left_slide_joint_qpos = self.sim.data.get_joint_qpos(self.which_hand+'_gripper:left_fingertip:slide:control')
+            right_slide_joint_qvel = self.sim.data.get_joint_qvel(self.which_hand+'_gripper:right_fingertip:slide:control')
+            left_slide_joint_qvel = self.sim.data.get_joint_qvel(self.which_hand+'_gripper:left_fingertip:slide:control')
+            gripper_state = np.array([right_slide_joint_qpos, left_slide_joint_qpos])
+            gripper_vel = np.array([right_slide_joint_qvel, left_slide_joint_qvel])*dt
 
         if self.observation_type=='joint_q':
             obs = np.concatenate([qpos, qvel, ee_pos, obj_pos])
         elif self.observation_type == 'ee_object_pos':
             obs = np.concatenate([ee_pos, obj_pos])
         elif self.observation_type == 'ee_object_all':
-            raise NotImplementedError
-            ee_vel = None
-            obj_vel = None
-            obj_rot = None
-            obs = np.concatenate([ee_pos, obj_pos])
+            # 실제 로봇실험에서 불가능한것 : gripper_state, gripper_vel, object_velp, object_velr, object_velp
+            obs = np.concatenate([ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), gripper_state, obj_rot.ravel(), obj_velp.ravel(), obj_velr.ravel(), ee_velp, gripper_vel], axis =-1)
+        elif self.observation_type == 'ee_object_pos_w_grip_custom_vel' or self.observation_type=='ee_object_pos_w_grip' or self.observation_type=='ee_object_pos_w_custom_vel':
+            if self.previous_ee_pos is None:
+                ee_velp = np.zeros_like(ee_pos)
+            else:
+                ee_velp = (ee_pos - self.previous_ee_pos)/dt                
+
+
+            if self.previous_obj_pos is None:
+                obj_velp = np.zeros_like(obj_pos)
+            else:
+                obj_velp = (obj_pos - self.previous_obj_pos)/dt
+
+            self.previous_ee_pos = ee_pos.copy()
+            self.previous_obj_pos = obj_pos.copy()
+
+            if self.observation_type=='ee_object_pos_w_grip_custom_vel':
+                obs = np.concatenate([
+                    ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), gripper_state, 
+                    obj_velp.ravel(), ee_velp
+                ])
+            elif self.observation_type=='ee_object_pos_w_custom_vel':
+                obs = np.concatenate([
+                    ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), obj_velp.ravel(), ee_velp
+                ])
+            else:
+                obs = np.concatenate([ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), gripper_state])
 
         '''
         For reference, Fetch Env's observation consist of
@@ -1166,10 +1425,6 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         ])        
         '''
 
-        # if self.reduced_observation:
-        #     obs = np.concatenate([ee_pos, obj_pos])
-        # else:
-        #     pass
         
         if self.full_state_goal:
             achieved_goal = obs
@@ -1237,14 +1492,14 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         qvel = self.data.qvel.flat.copy()        
         if self.which_hand =='right':
             #left arm's qpos,qvel index
-            start_p, end_p = self.ur3_nqpos+self.gripper_nqpos, 2*self.ur3_nqpos+2*self.gripper_nqpos
-            start_v, end_v = self.ur3_nqvel+self.gripper_nqvel, 2*self.ur3_nqvel+2*self.gripper_nqvel
+            start_p, end_p = self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos, 2*self.ur3_nqpos+2*self.gripper_nqpos+2*self.flat_gripper_nqpos
+            start_v, end_v = self.ur3_nqvel+self.gripper_nqvel+self.flat_gripper_nqvel, 2*self.ur3_nqvel+2*self.gripper_nqvel+2*self.flat_gripper_nqvel
             qpos[start_p:end_p] = self.left_get_away_qpos
             qvel[start_v:end_v] = np.zeros(end_v-start_v)
         elif self.which_hand=='left':
             #right arm's qpos,qvel index
-            start_p, end_p = 0, self.ur3_nqpos+self.gripper_nqpos
-            start_v, end_v = 0, self.ur3_nqvel+self.gripper_nqvel
+            start_p, end_p = 0, self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos
+            start_v, end_v = 0, self.ur3_nqvel+self.gripper_nqvel+self.flat_gripper_nqvel
             qpos[start_p:end_p] = self.right_get_away_qpos
             qvel[start_v:end_v] = np.zeros(end_v-start_v)
         
@@ -1408,10 +1663,6 @@ class DSCHOSingleUR3GoalEnv(DSCHODualUR3Env):
         qpos[qpos_start_idx:qpos_start_idx+3] = pos.copy() #자세는 previous에서 불변
         qvel[qvel_start_idx:qvel_start_idx+6] = 0 #object vel
         self.set_state(qpos, qvel)
-
-
-
-
 
 
 

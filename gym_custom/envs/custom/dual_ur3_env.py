@@ -22,7 +22,8 @@ pickandplace_xmls = ['dscho_dual_ur3_bar_pickandplace.xml', 'dscho_dual_ur3_bar_
 stick_pull_xmls = ['dscho_dual_ur3_stick_pull.xml', 'dscho_dual_ur3_stick_pull_obstacle_v0.xml', 'dscho_dual_ur3_stick_pull_obstacle_v2.xml', 'dscho_dual_ur3_stick_pull_obstacle_v3.xml','dscho_dual_ur3_stick_pull_obstacle_v4.xml','dscho_dual_ur3_stick_pull_obstacle_v5.xml']
 
 # After ICRA 2021
-object_xmls = ['dscho_dual_ur3_object.xml', 'dscho_dual_ur3_mocap_object.xml', 'dscho_dual_ur3_mocap_object_flat_gripper.xml']
+object_xmls = ['dscho_dual_ur3_object.xml', 'dscho_dual_ur3_object_flat_gripper.xml', 'dscho_dual_ur3_upright_object_flat_gripper.xml', \
+             'dscho_dual_ur3_mocap_object.xml', 'dscho_dual_ur3_mocap_object_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_object_flat_gripper.xml']
 
 class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
 

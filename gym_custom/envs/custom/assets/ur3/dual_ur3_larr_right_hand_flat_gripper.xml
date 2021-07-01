@@ -7,6 +7,7 @@
         <site name="right_gripper:qcX" type="box" pos="0.05 0.0 0.0" size="0.05 0.002 0.002"  quat = " 1.0 0.0  0.0 0."     rgba="1 0 0 1" />
         <site name="right_gripper:qcY" type="box" pos="0.0 0.05 0.0" size="0.05 0.002 0.002"  quat = " 0.707107 0.0 0.0 0.707107"  rgba="0 1 0 1" />
         <site name="right_gripper:qcZ" type="box" pos="0.0 0.0 0.05" size="0.05 0.002 0.002"  quat = "-0.707107 0.0 0.707107 0."     rgba="0 0 1 1" />
+        <site name="right_gripper:grip" pos="0 0 0" rgba="0 1 0 0.1" size="0.005"></site>
     </body>
     
     <geom name="right_gripper:light_1" type="sphere" size="0.005" pos="0.035 0 0.0166" material="Light" />
@@ -96,6 +97,6 @@
     </body>
 
 
-    <site name="right_gripper:grip" pos="0.02 0 0" rgba="0 1 0 0" size="0.02 0.02 0.02"></site>
+    
 
 </mujoco>

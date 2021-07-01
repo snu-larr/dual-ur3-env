@@ -45,7 +45,9 @@ class MujocoEnv(gym_custom.Env):
             raise IOError("File %s does not exist" % fullpath)
         self.frame_skip = frame_skip
         self.model = mujoco_py.load_model_from_path(fullpath)
-        self.sim = mujoco_py.MjSim(self.model)
+        # self.sim = mujoco_py.MjSim(self.model)
+        # dscho mod for mocap env
+        self.sim = mujoco_py.MjSim(self.model, nsubsteps=frame_skip)
         self.data = self.sim.data
         self.viewer = None
         self._viewers = {}

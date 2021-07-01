@@ -56,7 +56,7 @@ class MocapSingleWrapper(URScriptWrapper_DualUR3):
                 multi_step, 
                 gripper_action, 
                 serializable_initialized = False, 
-                so3_constraint='vertical_side', 
+                # so3_constraint='vertical_side', 
                 action_downscale=0.01,
                 gripper_force_scale = 50, 
                 *args, 
@@ -160,7 +160,7 @@ class MocapDualWrapper(URScriptWrapper_DualUR3):
                 multi_step, 
                 gripper_action, 
                 serializable_initialized = False, 
-                so3_constraint='vertical_side', 
+                # so3_constraint='vertical_side', 
                 action_downscale=0.01,
                 gripper_force_scale = 50, 
                 *args, 
@@ -355,16 +355,16 @@ class DualUR3Gripper(DualUR3Env):
                 'qvel': self._get_ur3_qvel()[:self.ur3_nqvel],
                 'gripperpos': self._get_gripper_qpos()[:self.gripper_nqpos],
                 'grippervel': self._get_gripper_qvel()[:self.gripper_nqvel],
-                'flat_grpperpos' : self._get_flat_gripper_qpos()[:self.flat_gripper_nqpos],
-                'flat_grppervel' : self._get_flat_gripper_qvel()[:self.flat_gripper_nqvel],
+                'flat_gripperpos' : self._get_flat_gripper_qpos()[:self.flat_gripper_nqpos],
+                'flat_grippervel' : self._get_flat_gripper_qvel()[:self.flat_gripper_nqvel],
             },
             'left': {
                 'qpos': self._get_ur3_qpos()[self.ur3_nqpos:],
                 'qvel': self._get_ur3_qvel()[self.ur3_nqvel:],
                 'gripperpos': self._get_gripper_qpos()[self.gripper_nqpos:],
                 'grippervel':self._get_gripper_qvel()[self.gripper_nqvel:],
-                'flat_grpperpos' : self._get_flat_gripper_qpos()[self.flat_gripper_nqpos:],
-                'flat_grppervel' : self._get_flat_gripper_qvel()[self.flat_gripper_nqvel:],
+                'flat_gripperpos' : self._get_flat_gripper_qpos()[self.flat_gripper_nqpos:],
+                'flat_grippervel' : self._get_flat_gripper_qvel()[self.flat_gripper_nqvel:],
             }
         }
         
@@ -375,11 +375,14 @@ class DualUR3Gripper(DualUR3Env):
 
 
 class DSCHODualUR3MocapEnv(DualUR3Gripper):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, custom_frame_skip = None, *args, **kwargs):
         self.save_init_params(locals())
         self.init_qpos_candidates = {}
+        self.custom_frame_skip = custom_frame_skip
+            
         # 양팔 널찍이 벌려있는 상태
         # default_right_qpos = np.array([[-90.0, -90.0, -90.0, -90.0, -135.0, 180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
+        
         default_left_qpos = np.array([[90.0, -90.0, 90.0, -90.0, 135.0, -180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
         
         # right : [0.15, -0.35, 0.9] left : [-0.2, -0.3, 0.8]
@@ -389,7 +392,10 @@ class DSCHODualUR3MocapEnv(DualUR3Gripper):
         # [0.15, -0.35, 0.9]
         # default_right_qpos = np.array([[-0.90259643, -2.24937667, -1.82423119, -1.23998854, -2.15827838,  2.2680261 ]])
         # [0.15, -0.35, 0.8]
-        default_right_qpos = np.array([[-0.76263046, -2.21085609, -1.50821658, -1.57404046, -2.08100962, 2.19369591]])
+        if self.init_qpos_type=='upright':
+            default_right_qpos = np.array([[-90.0, -90.0, -90.0, -90.0, 90.0, 180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
+        else:
+            default_right_qpos = np.array([[-0.76263046, -2.21085609, -1.50821658, -1.57404046, -2.08100962, 2.19369591]])
         # default_left_qpos = np.array([[0.73490191, -1.22867589, 1.78775333, -1.53617814, 2.07956014, -2.16994491]])
         
         # add default qpos configuration        
@@ -448,13 +454,19 @@ class DSCHODualUR3MocapEnv(DualUR3Gripper):
             init_qpos[self.ur3_nqpos:self.ur3_nqpos + self.gripper_nqpos] = gripper_q_right_des_candidates[right_idx]
             init_qpos[2*self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos:2*self.ur3_nqpos+2*self.gripper_nqpos+self.flat_gripper_nqpos] = gripper_q_left_des_candidates[left_idx]
             if self.flat_gripper:
-                raise NotImplementedError('think closed flat gripper !')
+                # raise NotImplementedError('think closed flat gripper !')
+                # set to closed gripper
+                init_qpos[self.ur3_nqpos+self.gripper_nqpos:self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos] = np.array([0.05, 0.05])
+                init_qpos[2*self.ur3_nqpos+2*self.gripper_nqpos+self.flat_gripper_nqpos:2*self.ur3_nqpos+2*self.gripper_nqpos+2*self.flat_gripper_nqpos] = np.array([0.05, 0.05])
 
         return init_qpos
 
     def _mujocoenv_init(self):
         '''overridable method'''
-        MujocoEnv.__init__(self, self.mujoco_xml_full_path, self.mujocoenv_frame_skip, automatically_set_spaces = self.automatically_set_spaces)
+        if self.custom_frame_skip is None:
+            MujocoEnv.__init__(self, self.mujoco_xml_full_path, self.mujocoenv_frame_skip, automatically_set_spaces = self.automatically_set_spaces)
+        else:
+            MujocoEnv.__init__(self, self.mujoco_xml_full_path, self.custom_frame_skip, automatically_set_spaces = self.automatically_set_spaces)
         
         if not self.automatically_set_spaces:
             self._env_setup(self._get_init_qpos())
@@ -474,23 +486,13 @@ class DSCHODualUR3MocapEnv(DualUR3Gripper):
             # assert 2*self.ur3_nact + 2*self.gripper_nact == self.model.nu, 'Number of action elements mismatch'
             assert 2*self.gripper_nact == self.model.nu, 'Number of action elements mismatch'
     
-    # NOTE : Should init the mocap?
-    def _env_setup(self, initial_qpos):
-        # print('debug before set state : right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
-        
-        self.set_state(initial_qpos, self.init_qvel)
-            # self.sim.data.set_joint_qpos(name, value)
-        
-        # print('debug before reset modcap weld : right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
-        self.reset_mocap_welds(self.sim)
-        
-        # print('debug before sim.forward reset modcap weld : right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
-        self.sim.forward()
-        
-        # right_gripper_target = self.get_endeff_pos('right')
-        # left_gripper_target = self.get_endeff_pos('left')
-        right_gripper_target = np.array([0.2, -0.4, 0.85])
-        left_gripper_target = np.array([-0.2, -0.4, 0.85])
+    def _set_mocap_to_desired_state(self):
+        if self.init_qpos_type=='upright':
+            right_gripper_target = np.array([0.0, -0.3, 0.85])
+            left_gripper_target = np.array([10, 10, 0.85])
+        else:
+            right_gripper_target = np.array([0.2, -0.4, 0.85])
+            left_gripper_target = np.array([-0.2, -0.4, 0.85])
         
         # print('debug after sim.forward: right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
 
@@ -507,9 +509,27 @@ class DSCHODualUR3MocapEnv(DualUR3Gripper):
         self.sim.data.set_mocap_quat('right_mocap', right_gripper_rotation)
         self.sim.data.set_mocap_pos('left_mocap', left_gripper_target)
         self.sim.data.set_mocap_quat('left_mocap', left_gripper_rotation)
-        for _ in range(100):
+
+    # NOTE : Should init the mocap?
+    def _env_setup(self, initial_qpos):
+        # print('debug before set state : right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
+        
+        self.set_state(initial_qpos, self.init_qvel)
+            # self.sim.data.set_joint_qpos(name, value)
+        
+        # print('debug before reset modcap weld : right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
+        self.reset_mocap_welds(self.sim)
+        
+        # print('debug before sim.forward reset modcap weld : right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
+        self.sim.forward()
+        
+        # right_gripper_target = self.get_endeff_pos('right')
+        # left_gripper_target = self.get_endeff_pos('left')
+        self._set_mocap_to_desired_state()
+        for _ in range(10):
             self.sim.step()
             # print('debug after sim.step: right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
+        
         # Extract information for sampling goals.
         # self.initial_gripper_xpos = self.sim.data.get_site_xpos('right_gripper:hand').copy()
         # if self.has_object:
@@ -524,25 +544,25 @@ class DSCHODualUR3MocapEnv(DualUR3Gripper):
 
         # right_pos_ctrl *= 0.05  # limit maximum change in position
         # right_rot_ctrl = [1., 0., 1., 0.]  # fixed rotation of the end effector, expressed as a quaternion
-        right_rot_ctrl = [0., 1., 0., 0.]  # fixed rotation of the end effector, expressed as a quaternion
+        right_rot_ctrl = [0., 1., 0., 0.]  # desired rotation of the end effector, expressed as a quaternion
         right_gripper_ctrl = np.array([right_gripper_ctrl, right_gripper_ctrl])
 
         # left_pos_ctrl *= 0.05  # limit maximum change in position
         # left_rot_ctrl = [1., 0., 1., 0.]  # fixed rotation of the end effector, expressed as a quaternion
-        left_rot_ctrl = [0., 1., 0., 0.]  # fixed rotation of the end effector, expressed as a quaternion
+        left_rot_ctrl = [0., 1., 0., 0.]  # desired rotation of the end effector, expressed as a quaternion
         left_gripper_ctrl = np.array([left_gripper_ctrl, left_gripper_ctrl])
         
 
         assert right_gripper_ctrl.shape == (2,) and left_gripper_ctrl.shape == (2,)
         if self.block_gripper:
-            right_gripper_ctrl = np.zeros_like(right_gripper_ctrl)
-            left_gripper_ctrl = np.zeros_like(left_gripper_ctrl)
+            right_gripper_ctrl = np.ones_like(right_gripper_ctrl)
+            left_gripper_ctrl = np.ones_like(left_gripper_ctrl)
         
         action = np.concatenate([right_pos_ctrl, right_rot_ctrl, left_pos_ctrl, left_rot_ctrl, right_gripper_ctrl, left_gripper_ctrl])
 
         # Apply action to simulation.
         self.ctrl_set_action(self.sim, action)
-        self.mocap_set_action(self.sim, action)
+        self.mocap_set_action(self.sim, action, rotation_fix=True)
 
 
     def ctrl_set_action(self, sim, action):
@@ -560,7 +580,7 @@ class DSCHODualUR3MocapEnv(DualUR3Gripper):
                     sim.data.ctrl[i] = sim.data.qpos[idx] + action[i]
 
 
-    def mocap_set_action(self,sim, action):
+    def mocap_set_action(self,sim, action, rotation_fix = True):
         """The action controls the robot using mocaps. Specifically, bodies
         on the robot (for example the gripper wrist) is controlled with
         mocap bodies. In this case the action is the desired difference
@@ -577,9 +597,13 @@ class DSCHODualUR3MocapEnv(DualUR3Gripper):
             quat_delta = action[:, 3:]
             
             # print('pos_delta : {} quat_delta : {}'.format(pos_delta, quat_delta))
-            self.reset_mocap2body_xpos(sim)
+            self.reset_mocap2body_xpos(sim) # mocap을 weld된 body의 pos, quat이랑 똑같이 set
             sim.data.mocap_pos[:] = sim.data.mocap_pos + pos_delta
-            sim.data.mocap_quat[:] = sim.data.mocap_quat + quat_delta
+            if rotation_fix:
+                desired_quat = quat_delta 
+                sim.data.mocap_quat[:] = desired_quat
+            else:
+                sim.data.mocap_quat[:] = sim.data.mocap_quat + quat_delta
 
 
     def reset_mocap_welds(self, sim):
@@ -736,6 +760,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                 has_obstacle = False,
                 task = 'pickandplace',
                 observation_type='joint_q', #'ee_object_object', #'ee_object_all'
+                init_qpos_type = None,
                 *args,
                 **kwargs
                 ):
@@ -747,6 +772,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         self.fixed_goal_qvel = fixed_goal_qvel
         self.task = task
         self.observation_type = observation_type
+        self.init_qpos_type = 'upright' if 'upright' in xml_filename else None
         # for LEAP(S=G) -> modified for S!=G (20200930)
         # assert (reduced_observation and not full_state_goal) or (not reduced_observation and full_state_goal)
         
@@ -774,6 +800,9 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
             raise NotImplementedError
 
 
+        self.previous_ee_pos = None
+        self.previous_obj_pos = None
+        
         self.reward_success_criterion = reward_success_criterion
         #self.automatically_set_spaces = automatically_set_spaces
         self.which_hand = which_hand
@@ -807,6 +836,10 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
             assert not self.trigonometry_observation
             # raise NotImplementedError
             self.obs_nqpos = None
+        elif self.observation_type=='ee_object_pos_w_grip_custom_vel':
+            self.obs_nqpos = None
+        elif self.observation_type=='ee_object_pos_w_grip':
+            self.obs_nqpos = None
 
         qpos_low = -np.ones(int(self.ur3_nqpos))*2*np.pi
         qpos_high = np.ones(int(self.ur3_nqpos))*2*np.pi
@@ -823,6 +856,10 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         elif self.which_hand =='left':
             ee_low = np.array([-0.35, -0.5, 0.77])
             ee_high = np.array([0.1, -0.2, 0.95])
+        
+        if self.init_qpos_type == 'upright': # right 기준
+            ee_low = np.array([-0.2, -0.5, 0.77])
+            ee_high = np.array([0.2, -0.2, 0.95])
 
         self.goal_ee_pos_space = Box(low = ee_low, high = ee_high, dtype=np.float32)
         
@@ -834,6 +871,10 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         elif self.which_hand =='left':
             goal_obj_low = np.array([-0.3, -0.45, 0.77])
             goal_obj_high = np.array([0.0, -0.3, 0.95])
+        
+        if self.init_qpos_type == 'upright': # right 기준
+            goal_obj_low = np.array([-0.15, -0.45, 0.77])
+            goal_obj_high = np.array([0.15, -0.3, 0.95])
 
         self.goal_obj_pos_space = Box(low = goal_obj_low, high = goal_obj_high, dtype=np.float32)
         
@@ -913,11 +954,22 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                 elif self.task in ['drawer_open']:
                     goal = None
                     raise NotImplementedError
+                elif self.task in ['reach']:
+                    goal_ee_pos = np.random.uniform(
+                        self.goal_ee_pos_space.low,
+                        self.goal_ee_pos_space.high,
+                        size=(self.goal_ee_pos_space.low.size),
+                    )
+                    goal = goal_ee_pos
                 else:
                     raise NotImplementedError
 
         return goal
-
+    
+    # def reset(self):
+    #     self.sim.reset()
+    #     ob = self.reset_model()
+    #     return ob
 
     def reset_model(self):
         # original_ob = super().reset_model() # init qpos,qvel set_state and get_obs
@@ -930,6 +982,9 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         
         self.set_state(qpos, qvel)
         # NOTE : check mocap pos quat
+        self._set_mocap_to_desired_state()
+        for _ in range(5):
+            self.sim.step()
 
         # randomly reset the initial position of an object
         if self.has_object:
@@ -939,7 +994,9 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                                 self.goal_obj_pos_space.high,
                                 size=(self.goal_obj_pos_space.low.size),
                             )[:2]
-                object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
+                # object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
+                object_pos = np.concatenate([object_xpos, np.array([0.75])], axis=-1)
+                
                 ee_pos = self.get_endeff_pos(arm=self.which_hand)
                 
                 while np.linalg.norm(object_pos - ee_pos) < 0.05:
@@ -948,24 +1005,59 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                                 self.goal_obj_pos_space.high,
                                 size=(self.goal_obj_pos_space.low.size),
                             )[:2]
-                    object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
+                    object_pos = np.concatenate([object_xpos, np.array([0.75])], axis=-1)
                 # print('In reset model, ee pos : {} obj pos : {}'.format(ee_pos, object_pos))
 
                 object_qpos = self.sim.data.get_joint_qpos('objjoint')
                 assert object_qpos.shape == (7,)
                 object_qpos[:3] = object_pos
                 self.sim.data.set_joint_qpos('objjoint', object_qpos)
+            elif self.task in ['reach']: # debug
+                debug_opt = 2
+                if debug_opt==1: # train fail
+                    #일단은 obj 위치 고정하고 reach goal 랜덤 샘플
+                    # fixed obj pos
+                    object_pos = np.array([0.0, -0.7, 0.75])
+                    object_qpos = self.sim.data.get_joint_qpos('objjoint')
+                    assert object_qpos.shape == (7,)
+                    object_qpos[:3] = object_pos
+                    self.sim.data.set_joint_qpos('objjoint', object_qpos)
+                    
+                elif debug_opt==2: # train success
+                    #obj 위치 랜덤샘플하고 그 위치를 goal로 설정
+                    object_xpos = np.random.uniform(
+                                    self.goal_obj_pos_space.low,
+                                    self.goal_obj_pos_space.high,
+                                    size=(self.goal_obj_pos_space.low.size),
+                                )[:2]
+                    # object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
+                    object_pos = np.concatenate([object_xpos, np.array([0.75])], axis=-1)
+                    object_qpos = self.sim.data.get_joint_qpos('objjoint')
+                    assert object_qpos.shape == (7,)
+                    object_qpos[:3] = object_pos
+                    self.sim.data.set_joint_qpos('objjoint', object_qpos)
+
             else:
                 pass
         
         self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
         
-        if self.has_object: # reach인 경우엔 필요x
-            while np.linalg.norm(object_pos - self._state_goal) < 0.05:
-                self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
-        
+        if self.has_object: # reach인 경우엔 필요x            
+            if self.task in ['reach']:
+                if debug_opt==1:
+                    pass
+                elif debug_opt==2:
+                    self._state_goal = object_pos.copy()
+            else:
+                while np.linalg.norm(object_pos - self._state_goal) < 0.05:
+                    self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
+            
         self.sim.forward()
         
+
+        self.previous_ee_pos = None
+        self.previous_obj_pos = None
+
         observation = self._get_obs()
 
         # observation = super().reset_model() # init qpos,qvel set_state and get_obs
@@ -1015,6 +1107,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
             qpos = self._get_ur3_qpos()[:self.ur3_nqpos]
             qvel = self._get_ur3_qvel()[:self.ur3_nqvel]
             ee_pos = self.get_endeff_pos(arm='right') # qpos idx찾아서 써야
+            # ee_pos = self.sim.data.get_site_xpos(self.which_hand+'_gripper:grip')
 
         elif self.which_hand=='left':
             qpos = self._get_ur3_qpos()[self.ur3_nqpos:]
@@ -1026,39 +1119,93 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
 
         if self.has_object:
             obj_pos = self.get_obj_pos(name='obj')
+            
         else :
             obj_pos = np.array([])
+
+        obj_rot = rotations.mat2euler(self.sim.data.get_site_xmat('objSite'))
+        # velocities
+        dt = self.sim.nsubsteps * self.sim.model.opt.timestep # same as self.dt
+        obj_velp = self.sim.data.get_site_xvelp('objSite') * dt
+        obj_velr = self.sim.data.get_site_xvelr('objSite') * dt
+        obj_rel_pos = obj_pos - ee_pos
+        if self.flat_gripper:                
+            gripper_state = np.array([self.sim.data.get_joint_qpos(self.which_hand+'_gripper:r_gripper_finger_joint'),
+                                    self.sim.data.get_joint_qpos(self.which_hand+'_gripper:l_gripper_finger_joint'),
+                                    ])
+            gripper_vel = np.array([self.sim.data.get_joint_qvel(self.which_hand+'_gripper:r_gripper_finger_joint'),
+                                    self.sim.data.get_joint_qvel(self.which_hand+'_gripper:l_gripper_finger_joint'),
+                                    ])*dt
+            
+        else:
+            right_slide_joint_qpos = self.sim.data.get_joint_qpos(self.which_hand+'_gripper:right_fingertip:slide:control')
+            left_slide_joint_qpos = self.sim.data.get_joint_qpos(self.which_hand+'_gripper:left_fingertip:slide:control')
+            right_slide_joint_qvel = self.sim.data.get_joint_qvel(self.which_hand+'_gripper:right_fingertip:slide:control')
+            left_slide_joint_qvel = self.sim.data.get_joint_qvel(self.which_hand+'_gripper:left_fingertip:slide:control')
+            gripper_state = np.array([right_slide_joint_qpos, left_slide_joint_qpos])
+            gripper_vel = np.array([right_slide_joint_qvel, left_slide_joint_qvel])*dt
+
+        # ee_xpos= self.sim.data.get_body_xpos(self.which_hand + '_gripper:hand')
+        ee_velp = self.sim.data.get_body_xvelp(self.which_hand + '_gripper:hand')*dt
 
         if self.observation_type=='joint_q':
             obs = np.concatenate([qpos, qvel, ee_pos, obj_pos])
         elif self.observation_type == 'ee_object_pos':
-            obs = np.concatenate([ee_pos, obj_pos])
+            obs = np.concatenate([ee_pos, obj_pos, obj_rel_pos])
+        elif self.observation_type == 'ee_object_pos_w_grip_custom_vel' or self.observation_type=='ee_object_pos_w_grip' or self.observation_type=='ee_object_pos_w_custom_vel':
+            if self.previous_ee_pos is None:
+                ee_velp = np.zeros_like(ee_pos)
+            else:
+                ee_velp = (ee_pos - self.previous_ee_pos)/dt                
+
+
+            if self.previous_obj_pos is None:
+                obj_velp = np.zeros_like(obj_pos)
+            else:
+                obj_velp = (obj_pos - self.previous_obj_pos)/dt
+
+            self.previous_ee_pos = ee_pos.copy()
+            self.previous_obj_pos = obj_pos.copy()
+
+            if self.observation_type=='ee_object_pos_w_grip_custom_vel':
+                obs = np.concatenate([
+                    ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), gripper_state, 
+                    obj_velp.ravel(), ee_velp
+                ])
+            elif self.observation_type=='ee_object_pos_w_custom_vel':
+                obs = np.concatenate([
+                    ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), obj_velp.ravel(), ee_velp
+                ])
+            else:
+                obs = np.concatenate([ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), gripper_state])
+
         elif self.observation_type == 'ee_object_all':
             # 실제 로봇실험에서 불가능한것 : gripper_state, gripper_vel, object_velp, object_velr, object_velp
-            obj_rot = rotations.mat2euler(self.sim.data.get_site_xmat('objSite'))
-            # velocities
-            dt = self.sim.nsubsteps * self.sim.model.opt.timestep # same as self.dt
-            obj_velp = self.sim.data.get_site_xvelp('objSite') * dt
-            obj_velr = self.sim.data.get_site_xvelr('objSite') * dt
-            obj_rel_pos = obj_pos - ee_pos
-            if self.flat_gripper:                
-                gripper_state = np.array([self.sim.data.get_joint_qpos(self.which_hand+'_gripper:r_gripper_finger_joint'),
-                                        self.sim.data.get_joint_qpos(self.which_hand+'_gripper:l_gripper_finger_joint'),
-                                        ])
-                gripper_vel = np.array([self.sim.data.get_joint_qvel(self.which_hand+'_gripper:r_gripper_finger_joint'),
-                                        self.sim.data.get_joint_qvel(self.which_hand+'_gripper:l_gripper_finger_joint'),
-                                        ])*dt
+            # obj_rot = rotations.mat2euler(self.sim.data.get_site_xmat('objSite'))
+            # # velocities
+            # dt = self.sim.nsubsteps * self.sim.model.opt.timestep # same as self.dt
+            # obj_velp = self.sim.data.get_site_xvelp('objSite') * dt
+            # obj_velr = self.sim.data.get_site_xvelr('objSite') * dt
+            # obj_rel_pos = obj_pos - ee_pos
+            # if self.flat_gripper:                
+            #     gripper_state = np.array([self.sim.data.get_joint_qpos(self.which_hand+'_gripper:r_gripper_finger_joint'),
+            #                             self.sim.data.get_joint_qpos(self.which_hand+'_gripper:l_gripper_finger_joint'),
+            #                             ])
+            #     gripper_vel = np.array([self.sim.data.get_joint_qvel(self.which_hand+'_gripper:r_gripper_finger_joint'),
+            #                             self.sim.data.get_joint_qvel(self.which_hand+'_gripper:l_gripper_finger_joint'),
+            #                             ])*dt
                 
-            else:
-                right_slide_joint_qpos = self.sim.data.get_joint_qpos(self.which_hand+'_gripper:right_fingertip:slide:control')
-                left_slide_joint_qpos = self.sim.data.get_joint_qpos(self.which_hand+'_gripper:left_fingertip:slide:control')
-                right_slide_joint_qvel = self.sim.data.get_joint_qvel(self.which_hand+'_gripper:right_fingertip:slide:control')
-                left_slide_joint_qvel = self.sim.data.get_joint_qvel(self.which_hand+'_gripper:left_fingertip:slide:control')
-                gripper_state = np.array([right_slide_joint_qpos, left_slide_joint_qpos])
-                gripper_vel = np.array([right_slide_joint_qvel, left_slide_joint_qvel])*dt
+            # else:
+            #     right_slide_joint_qpos = self.sim.data.get_joint_qpos(self.which_hand+'_gripper:right_fingertip:slide:control')
+            #     left_slide_joint_qpos = self.sim.data.get_joint_qpos(self.which_hand+'_gripper:left_fingertip:slide:control')
+            #     right_slide_joint_qvel = self.sim.data.get_joint_qvel(self.which_hand+'_gripper:right_fingertip:slide:control')
+            #     left_slide_joint_qvel = self.sim.data.get_joint_qvel(self.which_hand+'_gripper:left_fingertip:slide:control')
+            #     gripper_state = np.array([right_slide_joint_qpos, left_slide_joint_qpos])
+            #     gripper_vel = np.array([right_slide_joint_qvel, left_slide_joint_qvel])*dt
 
-            # ee_xpos= self.sim.data.get_body_xpos(self.which_hand + '_gripper:hand')
-            ee_velp = self.sim.data.get_body_xvelp(self.which_hand + '_gripper:hand')
+            # # ee_xpos= self.sim.data.get_body_xpos(self.which_hand + '_gripper:hand')
+            # ee_velp = self.sim.data.get_body_xvelp(self.which_hand + '_gripper:hand')*dt
+            # # ee_velp = self.sim.data.get_site_xvelp(self.which_hand + '_gripper:grip')*dt
             
             obs = np.concatenate([ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), gripper_state, obj_rot.ravel(), obj_velp.ravel(), obj_velr.ravel(), ee_velp, gripper_vel], axis =-1)
 
@@ -1068,7 +1215,10 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
             if not self.has_object: # reach
                 achieved_goal = ee_pos
             else: # pick and place, push, ...
-                achieved_goal = obj_pos
+                if self.task in ['reach']:
+                    achieved_goal = ee_pos
+                else:
+                    achieved_goal = obj_pos
             
         return {
             'observation' : obs.copy(),
@@ -1083,7 +1233,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         # print('action in SingleUR3GoalMocapEnv step : ', action)
         # actions of remaning arm will be garbage
         # gripper [-1,1] should be mod to
-        self._set_action(action)
+        self._set_action(action) # 여기서 mocap target 설정. 즉 아래 for 문 도는동안 target은 변치 않음?
 
 
         # if self.flat_gripper:
@@ -1095,7 +1245,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         #                 self.sim.model.eq_data[i, :] = np.array([0., 0., 0., 1., 0., 0., 0.])
         #     self.sim.forward()
 
-        multi_step = 100
+        multi_step = 4# 10으로 하고 framse skip 10으로 하고, desired position에서 불변인지 check
         for i in range(multi_step):
             self.sim.step()
         # self._step_callback() # gripper close related
@@ -1238,14 +1388,22 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
             placingDist = np.linalg.norm(achieved_goal - desired_goal)
         elif self.reward_success_criterion=='ee_pos':
             placingDist = np.linalg.norm(achieved_goal[-3:] - desired_goal[-3:])
-       
+        
+        
+        
         if self.sparse_reward : 
             if placingDist < self.distance_threshold:
                 reward = 0.0
             else :
                 reward = -1.0
         else :
-            reward = -placingDist
+            if self.task in ['push']:
+                # print('currently, dense push debug')
+                ee_pos = info['right_ee_pos']
+                from_ee_to_obj = np.linalg.norm(achieved_goal[-3:] - ee_pos[-3:])
+                reward = -from_ee_to_obj -placingDist
+            else:
+                reward = -placingDist
 
         return reward
 
@@ -1344,7 +1502,8 @@ class DSCHOSingleUR3PushEnv(DSCHOSingleUR3GoalMocapEnv):
 class DSCHOSingleUR3ReachEnv(DSCHOSingleUR3GoalMocapEnv):
     def __init__(self, *args, **kwargs):
         self.save_init_params(locals())
-        super().__init__(has_object=False, block_gripper=True, task='reach', *args, **kwargs)
+        print('@@@@@@@ Currently debugging reach env where has_object is True!')
+        super().__init__(has_object=True, block_gripper=True, task='reach', *args, **kwargs)
 
 class DSCHOSingleUR3AssembleEnv(DSCHOSingleUR3GoalMocapEnv):
     def __init__(self, *args, **kwargs):
