@@ -738,9 +738,11 @@ class Robotiq_Two_Finger_Gripper(object):
         self.add_line_to_program("rq_obj_detect = 0 #legacy artifact")
 
     def reset_gripper(self):
+        raise NotImplementedError('Debug for testing whether this method is called or not')
         self.add_line_to_program("rq_reset()")
 
     def activate_gripper(self):
+        raise NotImplementedError('Debug for testing whether this method is called or not')
         self.add_line_to_program("rq_activate_and_wait()")
 
     def open_gripper(self, wait=True):

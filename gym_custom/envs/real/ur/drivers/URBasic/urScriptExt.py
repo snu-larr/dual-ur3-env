@@ -97,6 +97,59 @@ class UrScriptExt(URBasic.urScript.UrScript):
         raise NotImplementedError   
         self.robotiqgrip.get_gripper_position()
 
+    # dscho add 2021 0701
+    def test_gripper_reset(self, wait=True):
+        # NOTE : It should be called after every episode ends.
+
+        # define everything related to gripper
+#         prg =  '''def reset_gripper():
+# {gripper_str}
+# end
+# '''
+        # movestr = self._move(movetype='j', pose=pose, a=a, v=v, t=t, r=r, wait=wait, q=q)
+        self.robotiqgrip.reset()
+        programString = self.robotiqgrip.ret_program_to_run()
+        if(programString == "") :
+            raise NotImplementedError('you should reset the gripper interface. There is no program string')
+
+        # programString = prg.format(**locals())
+        
+        self.robotConnector.RealTimeClient.SendProgram(programString)
+        if(wait):
+            self.waitRobotIdleOrStopFlag()
+
+    def test_move_gripper_pos(self, desired_gripper_pos, wait=True):
+        # just utilize the functions defined when self.test_gripper_reset() is called.        
+        assert desired_gripper_pos >= 0 and desired_gripper_pos <= 255, "Assume desired gripper pos is scaled to 0 ~255"
+        assert not wait, "It is expected to non wait mode for non blocking gripper action"
+        # NOTE : if gripper가 물체 집어서 desired pos까지 못움직일때 rq_move가 어떻게 반응하는지 check!
+        prg = 'rq_move({desired_gripper_pos})\n'
+        # "rq_gripper_pos_and_wait("+str(force)+")"
+        programString = prg.format(**locals())
+        
+        self.robotConnector.RealTimeClient.Send(programString)
+        if(wait):
+            self.waitRobotIdleOrStopFlag()
+
+    def test_get_gripper_pos(self, wait=True):
+        # just utilize the functions defined when self.test_gripper_reset() is called.        
+        assert not wait, "It is expected to non wait mode for non blocking gripper action"
+        # NOTE : if gripper가 물체 집어서 desired pos까지 못움직일때 rq_move가 어떻게 반응하는지 check!
+        prg = 'rq_current_pos()\n'
+        # "rq_gripper_pos_and_wait("+str(force)+")"
+        programString = prg.format(**locals())
+        
+        self.robotConnector.RealTimeClient.Send(programString)
+        if(wait):
+            self.waitRobotIdleOrStopFlag()
+        
+        
+        # from get_actual_joint_speeds()
+        # if(wait):
+        #     self.sync()
+        # return self.robotConnector.RobotModel.ActualQD()
+
+
     def close(self):
         self.print_actual_tcp_pose()
         self.print_actual_joint_positions()
