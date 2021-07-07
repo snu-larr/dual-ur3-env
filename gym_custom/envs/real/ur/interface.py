@@ -97,6 +97,12 @@ class URScriptInterface(object):
         '''
         if type(q) == np.ndarray: q = q.tolist()
         self.comm.servoj(q=q, t=t, lookahead_time=lookahead_time, gain=gain, wait=wait)
+        # dscho mod
+        gripper_debug = True
+        if gripper_debug:
+            assert not wait
+            self.move_gripper(g=0, wait=wait) # open gripper while servoj
+            print('grip pos : ',self.get_gripper_position())
 
     def speedj(self, qd, a, t , wait=True):
         '''
@@ -104,6 +110,12 @@ class URScriptInterface(object):
         '''
         if type(qd) == np.ndarray: qd = qd.tolist()
         self.comm.speedj(qd=qd, a=a, t=t, wait=wait)
+        # dscho mod
+        gripper_debug = True
+        if gripper_debug:
+            assert not wait
+            self.move_gripper(g=255, wait=wait) # close gripper while servoj
+            print('grip pos : ',self.get_gripper_position())
 
     def speedl(self, *args, **kwargs):
         raise NotImplementedError()
@@ -141,16 +153,19 @@ class URScriptInterface(object):
         '''Compatibility wrapper for move_gripper_position()'''
         return self.move_gripper_position(*args, **kwargs)
 
-    def move_gripper_position(self, g):
-        # TODO: dscho
-        self.comm.force_gripper(g)
-        # g = 0
-        # if g < 0: # open
-        #     return self.open_gripper()
-        # elif g > 0: # close
-        #     return self.close_gripper()
-        # else: # do nothing
-        #     return None
+    def move_gripper_position(self, g, wait=True):
+        self.comm.move_gripper(g, wait)
+
+    # def move_gripper_position(self, g):
+    #     # TODO: dscho
+    #     self.comm.force_gripper(g)
+    #     # g = 0
+    #     # if g < 0: # open
+    #     #     return self.open_gripper()
+    #     # elif g > 0: # close
+    #     #     return self.close_gripper()
+    #     # else: # do nothing
+    #     #     return None
 
     def move_gripper_velocity(self, gd):
         # TODO: dscho
@@ -174,8 +189,8 @@ class URScriptInterface(object):
 
     def get_gripper_position(self):
         # TODO: dscho
-        return np.array([0.0])
-        # raise NotImplementedError()
+        # return np.array([0.0])
+        return np.array([self.comm.get_gripper_position()])
 
     def get_gripper_speed(self):
         # TODO: dscho

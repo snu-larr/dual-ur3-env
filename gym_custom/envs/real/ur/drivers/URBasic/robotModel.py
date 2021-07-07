@@ -283,10 +283,32 @@ class RobotModel(object):
                 result[ii] = 2**(ii-32)&self.dataDir['output_bit_registers32_to_63']==2**(ii-32)
         return result
     
-    def OutputDoubleRegister(self):raise NotImplementedError('Function Not yet implemented')
+    #def OutputDoubleRegister(self):raise NotImplementedError('Function Not yet implemented')
+    #dscho mod
+    def OutputDoubleRegister(self):
+        temp_list = []
+        for i in range(16):
+            temp_list.append(self.dataDir['output_double_register_'+str(i)])
+        return temp_list
+    
+    def OutputIntRegister(self):
+        temp_list = []
+        for i in range(16):
+            temp_list.append(self.dataDir['output_int_register_'+str(i)])
+        return temp_list
+    
+    def ToolAnalogInput0(self):
+        return self.dataDir['tool_analog_input0']
+    def ToolAnalogInput1(self):
+        return self.dataDir['tool_analog_input1']
+    
+
+
     def UrControlVersion(self):raise NotImplementedError('Function Not yet implemented')
     def ClearToSend(self):raise NotImplementedError('Function Not yet implemented')
 
+    
+    
 
 class RobotStatusBit(object):
     PowerOn = None
