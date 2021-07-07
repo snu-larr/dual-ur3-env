@@ -2,7 +2,7 @@
 
 <mujoco model="dual ur3 base">
     <!-- <include file="dual_ur3_configs.xml"/> -->
-    <include file="dual_ur3_configs_debug.xml"/>
+    <include file="dual_ur3_configs.xml"/>
     <include file="dual_ur3_constraints_flat_gripper.xml"/>
     
     <!-- From FetchEnv for cube object-->
@@ -160,7 +160,8 @@
             <!-- from my env -->
             <joint name="objjoint" type="free" damping="0.01"></joint>
             <!-- <geom size="0.02 0.02 0.035" type="box" name="objGeom" density="2000" friction="2 0.1 0.002" condim="3"></geom>  -->
-            <geom size="0.025 0.025 0.025" type="box" condim="3" name="objGeom" material="block_mat" mass="2" ></geom>
+            <!--because gripper pos is 0.159 in Fetch but 0.08 in UR-->
+            <geom size="0.025 0.025 0.025" type="box" condim="3" name="objGeom" material="block_mat" mass="2"></geom>
             <!-- material="block_mat"  mass="1"-->
          
 			<site name="objSite" pos="0 0 0" size="0.01 0.01 0.01" rgba="1 0 0 1" type="sphere"></site>
@@ -175,7 +176,7 @@
         
         <body name="asri_table(rectangle)" pos="0 -0.5 0" >
             <geom name="rec:tabletop" type="box" pos="0 0 0.72" size="0.5 0.3 0.01" rgba=".6 .6 .5 1"
-                contype="1" conaffinity="1" friction="2 0.1 0.002" material="light_wood_v2"/>
+                contype="1" conaffinity="1"  material="light_wood_v2"/> <!--friction="2 0.1 0.002"-->
             <geom name="rec:leg1" type="cylinder" fromto="-0.45 -0.25 0.72 -0.45 -0.25 0" size="0.025" material="metal"/>
             <geom name="rec:leg2" type="cylinder" fromto="-0.45 0.25 0.72 -0.45 0.25 0" size="0.025" material="metal"/>
             <geom name="rec:leg3" type="cylinder" fromto="0.45 -0.25 0.72 0.45 -0.25 0" size="0.025" material="metal"/>

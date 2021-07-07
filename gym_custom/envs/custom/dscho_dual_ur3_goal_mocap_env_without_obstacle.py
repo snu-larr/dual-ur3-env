@@ -836,10 +836,9 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
             assert not self.trigonometry_observation
             # raise NotImplementedError
             self.obs_nqpos = None
-        elif self.observation_type=='ee_object_pos_w_grip_custom_vel':
+        elif self.observation_type=='ee_object_pos_w_grip_custom_vel' or self.observation_type=='ee_object_pos_w_grip' or self.observation_type=='ee_object_pos_w_custom_vel':
             self.obs_nqpos = None
-        elif self.observation_type=='ee_object_pos_w_grip':
-            self.obs_nqpos = None
+       
 
         qpos_low = -np.ones(int(self.ur3_nqpos))*2*np.pi
         qpos_high = np.ones(int(self.ur3_nqpos))*2*np.pi
@@ -1180,32 +1179,6 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                 obs = np.concatenate([ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), gripper_state])
 
         elif self.observation_type == 'ee_object_all':
-            # 실제 로봇실험에서 불가능한것 : gripper_state, gripper_vel, object_velp, object_velr, object_velp
-            # obj_rot = rotations.mat2euler(self.sim.data.get_site_xmat('objSite'))
-            # # velocities
-            # dt = self.sim.nsubsteps * self.sim.model.opt.timestep # same as self.dt
-            # obj_velp = self.sim.data.get_site_xvelp('objSite') * dt
-            # obj_velr = self.sim.data.get_site_xvelr('objSite') * dt
-            # obj_rel_pos = obj_pos - ee_pos
-            # if self.flat_gripper:                
-            #     gripper_state = np.array([self.sim.data.get_joint_qpos(self.which_hand+'_gripper:r_gripper_finger_joint'),
-            #                             self.sim.data.get_joint_qpos(self.which_hand+'_gripper:l_gripper_finger_joint'),
-            #                             ])
-            #     gripper_vel = np.array([self.sim.data.get_joint_qvel(self.which_hand+'_gripper:r_gripper_finger_joint'),
-            #                             self.sim.data.get_joint_qvel(self.which_hand+'_gripper:l_gripper_finger_joint'),
-            #                             ])*dt
-                
-            # else:
-            #     right_slide_joint_qpos = self.sim.data.get_joint_qpos(self.which_hand+'_gripper:right_fingertip:slide:control')
-            #     left_slide_joint_qpos = self.sim.data.get_joint_qpos(self.which_hand+'_gripper:left_fingertip:slide:control')
-            #     right_slide_joint_qvel = self.sim.data.get_joint_qvel(self.which_hand+'_gripper:right_fingertip:slide:control')
-            #     left_slide_joint_qvel = self.sim.data.get_joint_qvel(self.which_hand+'_gripper:left_fingertip:slide:control')
-            #     gripper_state = np.array([right_slide_joint_qpos, left_slide_joint_qpos])
-            #     gripper_vel = np.array([right_slide_joint_qvel, left_slide_joint_qvel])*dt
-
-            # # ee_xpos= self.sim.data.get_body_xpos(self.which_hand + '_gripper:hand')
-            # ee_velp = self.sim.data.get_body_xvelp(self.which_hand + '_gripper:hand')*dt
-            # # ee_velp = self.sim.data.get_site_xvelp(self.which_hand + '_gripper:grip')*dt
             
             obs = np.concatenate([ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), gripper_state, obj_rot.ravel(), obj_velp.ravel(), obj_velr.ravel(), ee_velp, gripper_vel], axis =-1)
 
@@ -1245,7 +1218,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         #                 self.sim.model.eq_data[i, :] = np.array([0., 0., 0., 1., 0., 0., 0.])
         #     self.sim.forward()
 
-        multi_step = 4# 10으로 하고 framse skip 10으로 하고, desired position에서 불변인지 check
+        multi_step = 3# 10으로 하고 framse skip 10으로 하고, desired position에서 불변인지 check
         for i in range(multi_step):
             self.sim.step()
         # self._step_callback() # gripper close related
@@ -1389,8 +1362,6 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         elif self.reward_success_criterion=='ee_pos':
             placingDist = np.linalg.norm(achieved_goal[-3:] - desired_goal[-3:])
         
-        
-        
         if self.sparse_reward : 
             if placingDist < self.distance_threshold:
                 reward = 0.0
@@ -1487,6 +1458,298 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         qpos[qpos_start_idx:qpos_start_idx+3] = pos.copy() #자세는 previous에서 불변
         qvel[qvel_start_idx:qvel_start_idx+6] = 0 #object vel
         self.set_state(qpos, qvel)
+
+
+
+class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
+    
+    # Sholud be used with URScriptWrapper
+    
+    def __init__(self,                
+                num_objects = 1,
+                *args,
+                **kwargs
+                ):
+        self.save_init_params(locals())
+        self.num_objects = num_objects
+        self.goal_object_idx = 0
+        self.goal_weight_is_set = False
+        super().__init__(has_object=True,  block_gripper=False,  task='pickandplace', *args, **kwargs)
+        
+    def _get_obs(self):
+        
+        if self.which_hand=='right':
+            qpos = self._get_ur3_qpos()[:self.ur3_nqpos]
+            qvel = self._get_ur3_qvel()[:self.ur3_nqvel]
+            ee_pos = self.get_endeff_pos(arm='right') # qpos idx찾아서 써야
+            # ee_pos = self.sim.data.get_site_xpos(self.which_hand+'_gripper:grip')
+
+        elif self.which_hand=='left':
+            qpos = self._get_ur3_qpos()[self.ur3_nqpos:]
+            qvel = self._get_ur3_qvel()[self.ur3_nqvel:]
+            ee_pos = self.get_endeff_pos(arm='left')
+        
+        if self.trigonometry_observation:
+            qpos = np.concatenate([np.cos(qpos), np.sin(qpos)], axis = -1)
+        
+        if self.has_object:
+            object_pos_list = []
+            object_rot_list = []
+            object_velp_list = []
+            object_velr_list = []
+            object_rel_pos_list = []
+            
+            for i in range(self.num_objects):
+                obj_pos = self.get_obj_pos(name='obj_'+str(i))
+
+                obj_rot = rotations.mat2euler(self.sim.data.get_site_xmat('objSite_'+str(i)))
+                # velocities
+                dt = self.sim.nsubsteps * self.sim.model.opt.timestep # same as self.dt
+                obj_velp = self.sim.data.get_site_xvelp('objSite_'+str(i)) * dt
+                obj_velr = self.sim.data.get_site_xvelr('objSite_'+str(i)) * dt
+                obj_rel_pos = obj_pos - ee_pos
+
+                object_pos_list.append(obj_pos)
+                object_rot_list.append(obj_rot)
+                object_velp_list.append(obj_velp)
+                object_velr_list.append(obj_velr)
+                object_rel_pos_list.append(obj_rel_pos)
+            
+            obj_pos = np.stack(object_pos_list, axis =0) #[num_obj, dim]
+            obj_rot = np.stack(object_rot_list, axis =0) #[num_obj, dim]
+            obj_velp = np.stack(object_velp_list, axis =0) #[num_obj, dim]
+            obj_velr = np.stack(object_velr_list, axis =0) #[num_obj, dim]
+            obj_rel_pos = np.stack(object_rel_pos_list, axis =0) #[num_obj, dim]
+
+
+
+        else :
+            raise NotImplementedError            
+
+        if self.flat_gripper:                
+            gripper_state = np.array([self.sim.data.get_joint_qpos(self.which_hand+'_gripper:r_gripper_finger_joint'),
+                                    self.sim.data.get_joint_qpos(self.which_hand+'_gripper:l_gripper_finger_joint'),
+                                    ])
+            gripper_vel = np.array([self.sim.data.get_joint_qvel(self.which_hand+'_gripper:r_gripper_finger_joint'),
+                                    self.sim.data.get_joint_qvel(self.which_hand+'_gripper:l_gripper_finger_joint'),
+                                    ])*dt
+            
+        else:
+            right_slide_joint_qpos = self.sim.data.get_joint_qpos(self.which_hand+'_gripper:right_fingertip:slide:control')
+            left_slide_joint_qpos = self.sim.data.get_joint_qpos(self.which_hand+'_gripper:left_fingertip:slide:control')
+            right_slide_joint_qvel = self.sim.data.get_joint_qvel(self.which_hand+'_gripper:right_fingertip:slide:control')
+            left_slide_joint_qvel = self.sim.data.get_joint_qvel(self.which_hand+'_gripper:left_fingertip:slide:control')
+            gripper_state = np.array([right_slide_joint_qpos, left_slide_joint_qpos])
+            gripper_vel = np.array([right_slide_joint_qvel, left_slide_joint_qvel])*dt
+
+        # ee_xpos= self.sim.data.get_body_xpos(self.which_hand + '_gripper:hand')
+        ee_velp = self.sim.data.get_body_xvelp(self.which_hand + '_gripper:hand')*dt
+
+        if self.observation_type=='joint_q':
+            obs = np.concatenate([qpos, qvel, ee_pos, obj_pos])
+        elif self.observation_type == 'ee_object_pos':
+            obs = np.concatenate([ee_pos, obj_pos, obj_rel_pos])
+        elif self.observation_type == 'ee_object_pos_w_grip_custom_vel' or self.observation_type=='ee_object_pos_w_grip' or self.observation_type=='ee_object_pos_w_custom_vel':
+            if self.previous_ee_pos is None:
+                ee_velp = np.zeros_like(ee_pos)
+            else:
+                ee_velp = (ee_pos - self.previous_ee_pos)/dt                
+
+
+            if self.previous_obj_pos is None:
+                obj_velp = np.zeros_like(obj_pos)
+            else:
+                obj_velp = (obj_pos - self.previous_obj_pos)/dt
+
+            self.previous_ee_pos = ee_pos.copy()
+            self.previous_obj_pos = obj_pos.copy()
+
+            if self.observation_type=='ee_object_pos_w_grip_custom_vel':
+                obs = np.concatenate([
+                    ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), gripper_state, 
+                    obj_velp.ravel(), ee_velp
+                ])
+            elif self.observation_type=='ee_object_pos_w_custom_vel':
+                obs = np.concatenate([
+                    ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), obj_velp.ravel(), ee_velp
+                ])
+            else:
+                obs = np.concatenate([ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), gripper_state])
+
+        elif self.observation_type == 'ee_object_all':
+            
+            obs = np.concatenate([ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), gripper_state, obj_rot.ravel(), obj_velp.ravel(), obj_velr.ravel(), ee_velp, gripper_vel], axis =-1)
+
+        if self.full_state_goal:
+            achieved_goal = obs
+        else :
+            if not self.has_object:
+                raise NotImplementedError()                
+            else:
+                achieved_goal = obj_pos[self.goal_object_idx]
+            
+            
+        return {
+            'observation' : obs.copy(),
+            'achieved_goal' : achieved_goal.copy(),
+            'desired_goal' : self._state_goal.copy(), 
+        }    
+
+    def reset_model(self):        
+        qpos = self._get_init_qpos() #+ self.np_random.uniform(size=self.model.nq, low=-0.01, high=0.01)
+        qvel = self.init_qvel + self.np_random.uniform(size=self.model.nv, low=-0.01, high=0.01)
+        
+        self.set_state(qpos, qvel)
+        # NOTE : check mocap pos quat
+        self._set_mocap_to_desired_state()
+        for _ in range(5):
+            self.sim.step()
+
+        # randomly reset the initial position of an object
+        if self.has_object:
+            if self.task in ['pickandplace', 'push']:
+                for i in range(self.num_objects):
+                    object_xpos = np.random.uniform(
+                                    self.goal_obj_pos_space.low,
+                                    self.goal_obj_pos_space.high,
+                                    size=(self.goal_obj_pos_space.low.size),
+                                )[:2]
+                    # object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
+                    object_pos = np.concatenate([object_xpos, np.array([0.75])], axis=-1)
+                    
+                    ee_pos = self.get_endeff_pos(arm=self.which_hand)
+                    
+                    while np.linalg.norm(object_pos - ee_pos) < 0.05:
+                        object_xpos = np.random.uniform(
+                                    self.goal_obj_pos_space.low,
+                                    self.goal_obj_pos_space.high,
+                                    size=(self.goal_obj_pos_space.low.size),
+                                )[:2]
+                        object_pos = np.concatenate([object_xpos, np.array([0.75])], axis=-1)
+                    # print('In reset model, ee pos : {} obj pos : {}'.format(ee_pos, object_pos))
+
+                    object_qpos = self.sim.data.get_joint_qpos('objjoint_'+str(i))
+                    assert object_qpos.shape == (7,)
+                    object_qpos[:3] = object_pos
+                    self.sim.data.set_joint_qpos('objjoint_'+str(i), object_qpos)
+            
+
+            else:
+                pass
+        
+        self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
+        
+        if self.has_object: # reach인 경우엔 필요x            
+            if self.task in ['reach']:
+                pass
+            else:
+                while np.linalg.norm(object_pos - self._state_goal) < 0.05:
+                    self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
+            
+        self.sim.forward()
+        
+
+        self.previous_ee_pos = None
+        self.previous_obj_pos = None
+
+        observation = self._get_obs()
+
+        # observation = super().reset_model() # init qpos,qvel set_state and get_obs
+        
+        info = {
+            'is_success': self._is_success(observation['achieved_goal'], self._state_goal),
+            'right_ee_pos' : self.get_endeff_pos(arm='right'),
+            'left_ee_pos' : self.get_endeff_pos(arm='left'),
+            # 'object_pos': self.get_obj_pos(name='obj'),
+            # 'object_qpos': self.get_obj_qpos(name='obj'),
+            # 'object_vel': self.get_obj_qvel(name='obj'),
+            # 'object_quat': self.get_obj_quat(name='obj'),
+            'null_obj_val' : self._calculate_so3_error().copy(),
+            'l2_distance_to_goal' : np.linalg.norm(observation['desired_goal']-observation['achieved_goal'], ord=2, axis = -1), 
+            'l1_distance_to_goal' : np.linalg.norm(observation['desired_goal']-observation['achieved_goal'], ord=1, axis = -1),
+            'l2_distance_to_goal_of_interest' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=2, axis = -1), # diffrent from reward_dim 
+            'l1_distance_to_goal_of_interest' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=1, axis = -1),
+        }
+        if not self.full_state_goal:
+            info.update({'l2_distance_to_goal_for_reward' : info['l2_distance_to_goal'],
+                         'l1_distance_to_goal_for_reward' : info['l1_distance_to_goal']})
+        elif self.reward_by_ee:
+            info.update({'l2_distance_to_goal_for_reward' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=2, axis=-1),  
+                         'l1_distance_to_goal_for_reward' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=1, axis=-1),
+                         })
+        else:
+            info.update({'l2_distance_to_goal_for_reward' : np.linalg.norm(
+                np.concatenate([observation['desired_goal'][:self.obs_nqpos], observation['desired_goal'][-3:]], axis =-1)-
+                np.concatenate([observation['achieved_goal'][:self.obs_nqpos], observation['achieved_goal'][-3:]], axis =-1),
+                ord=2, axis = -1
+            ),
+            'l1_distance_to_goal_for_reward' : np.linalg.norm(
+                np.concatenate([observation['desired_goal'][:self.obs_nqpos], observation['desired_goal'][-3:]], axis =-1)-
+                np.concatenate([observation['achieved_goal'][:self.obs_nqpos], observation['achieved_goal'][-3:]], axis =-1),
+                ord=1, axis = -1
+            )})
+        self.info = copy.deepcopy(info)
+
+        self._set_goal_marker(self._state_goal)
+        self.curr_path_length = 0
+        return observation
+        
+    def sample_goal(self, full_state_goal):
+        # need to mod for resample if goal is inside the wall
+        if full_state_goal:
+            raise NotImplementedError
+        else :
+            if not self.has_object: # reach
+                goal_ee_pos = np.random.uniform(
+                    self.goal_ee_pos_space.low,
+                    self.goal_ee_pos_space.high,
+                    size=(self.goal_ee_pos_space.low.size),
+                )
+                goal = goal_ee_pos
+            else: # pick and place, push, ...
+                
+                goal_obj_pos = np.random.uniform(
+                    self.goal_obj_pos_space.low,
+                    self.goal_obj_pos_space.high,
+                    size=(self.goal_obj_pos_space.low.size),
+                )
+                if self.task in ['pickandplace']:
+                    goal = goal_obj_pos
+                elif self.task in ['push']:
+                    goal = np.concatenate([goal_obj_pos[:2], np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
+                elif self.task in ['assemble']:
+                    goal = None
+                    raise NotImplementedError
+                elif self.task in ['drawer_open']:
+                    goal = None
+                    raise NotImplementedError
+                elif self.task in ['reach']:
+                    goal_ee_pos = np.random.uniform(
+                        self.goal_ee_pos_space.low,
+                        self.goal_ee_pos_space.high,
+                        size=(self.goal_ee_pos_space.low.size),
+                    )
+                    goal = goal_ee_pos
+                else:
+                    raise NotImplementedError
+
+                if self.goal_weight_is_set:
+                    self.goal_object_idx = np.argmax(self.goal_weight)
+                    self.goal_weight_is_set = False
+                else:
+                    self.goal_object_idx = np.random.randint(self.num_objects)
+
+        return goal
+    
+    def set_goal_weight(self, goal_weight):
+        self.goal_weight = goal_weight
+        self.goal_weight_is_set = True
+
+
+    
+        
+
+
 
 
 class DSCHOSingleUR3PickAndPlaceEnv(DSCHOSingleUR3GoalMocapEnv):

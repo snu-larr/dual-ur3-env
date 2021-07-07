@@ -662,6 +662,15 @@ register(
     kwargs={'xml_filename' : 'dscho_dual_ur3_mocap_object.xml'}
 )
 
+# MultiObject
+register(
+    id='dscho-single-ur3-mocap-pickandplace-multiobject-v1',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_mocap_env_without_obstacle:DSCHOSingleUR3PickAndPlaceMultiObjectEnv',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    #kwargs={'xml_filename' : 'dscho_dual_ur3_mocap_object.xml'}
+)
+
 # Algorithmic
 # ----------------------------------------
 

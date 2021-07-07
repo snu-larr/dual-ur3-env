@@ -23,7 +23,10 @@ stick_pull_xmls = ['dscho_dual_ur3_stick_pull.xml', 'dscho_dual_ur3_stick_pull_o
 
 # After ICRA 2021
 object_xmls = ['dscho_dual_ur3_object.xml', 'dscho_dual_ur3_object_flat_gripper.xml', 'dscho_dual_ur3_upright_object_flat_gripper.xml', \
-             'dscho_dual_ur3_mocap_object.xml', 'dscho_dual_ur3_mocap_object_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_object_flat_gripper.xml']
+             'dscho_dual_ur3_mocap_object.xml', 'dscho_dual_ur3_mocap_object_flat_gripper.xml', \
+             'dscho_dual_ur3_upright_mocap_object_flat_gripper.xml', ]
+
+multi_object_xmls = ['dscho_dual_ur3_upright_mocap_4object_flat_gripper.xml']
 
 class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
 
@@ -55,28 +58,32 @@ class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
             self.mujoco_xml_full_path = os.path.join(os.path.dirname(__file__), 'assets/ur3/dual_ur3_base.xml')
             self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [7,7,7,7] 
             self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, [6,6,6,6]
-            self.num_objects = 4
+            #self.num_objects = 4
         elif xml_filename in lift_xmls or xml_filename in pickandplace_xmls:
             self.mujoco_xml_full_path = os.path.join(os.path.dirname(__file__), 'assets/ur3/'+xml_filename)
             self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [7] # long box or cylinder
             self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, [6]
-            self.num_objects = 1
+            #self.num_objects = 1
         elif xml_filename in no_object_xmls:
             self.mujoco_xml_full_path = os.path.join(os.path.dirname(__file__), 'assets/ur3/'+xml_filename)
             self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [0]
             self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, [0]
-            self.num_objects = 0
+            #self.num_objects = 0
         elif xml_filename in stick_pull_xmls:
             self.mujoco_xml_full_path = os.path.join(os.path.dirname(__file__), 'assets/ur3/'+xml_filename)
             self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [7,2] # long box(stick), pull_object
             self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, [6,2]
-            self.num_objects = 2
+            #self.num_objects = 2
         elif xml_filename in object_xmls:
             self.mujoco_xml_full_path = os.path.join(os.path.dirname(__file__), 'assets/ur3/'+xml_filename)
             self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [7] # cube object
             self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, [6]
-            self.num_objects = 1
-        
+            #self.num_objects = 1
+        elif xml_filename in multi_object_xmls:
+            self.mujoco_xml_full_path = os.path.join(os.path.dirname(__file__), 'assets/ur3/'+xml_filename)
+            self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [7]*self.num_objects # cube object
+            self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, [6]*self.num_objects
+            
             
 
         #self._ezpickle_init()

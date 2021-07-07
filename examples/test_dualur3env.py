@@ -3324,16 +3324,33 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     g_control_type='move_gripper_force'
     gripper_action = True
     
-    env_id = 'dscho-single-ur3-mocap-pickandplace-v1'
+    #env_id = 'dscho-single-ur3-mocap-pickandplace-v1'
+    env_id = 'dscho-single-ur3-mocap-pickandplace-multiobject-v1'
     # env_id = 'dscho-single-ur3-mocap-reach-v1'
     # make_video = False
     which_hand = 'right'
     from gym_custom.envs.custom.dscho_dual_ur3_goal_mocap_env_without_obstacle import DSCHOSingleUR3PickAndPlaceEnv, MocapSingleWrapper
     
     upright_ver = True
-    xml_filename= 'dscho_dual_ur3_upright_mocap_object_flat_gripper.xml' if upright_ver else 'dscho_dual_ur3_mocap_object_flat_gripper.xml'
-    env = gym_custom.make(env_id , 
-                        initMode = None, 
+    multi_objects = True
+    if multi_objects:
+        assert upright_ver
+        num_objects = 4
+        xml_filename= 'dscho_dual_ur3_upright_mocap_'+str(num_objects)+'object_flat_gripper.xml'
+        env_kwargs= dict(initMode = None, 
+                        sparse_reward = True, 
+                        which_hand=which_hand,
+                        observation_type = 'ee_object_all',
+                        trigonometry_observation = False,
+                        so3_constraint='vertical_side', #사실상 의미x. so3 error calculation에만 사용
+                        flat_gripper = True, 
+                        xml_filename = xml_filename,
+                        custom_frame_skip = 10, # 0.005 * 10 =0.05s per step
+                        num_objects=num_objects,
+                        )
+    else:
+        xml_filename= 'dscho_dual_ur3_upright_mocap_object_flat_gripper.xml' if upright_ver else 'dscho_dual_ur3_mocap_object_flat_gripper.xml'
+        env_kwargs= dict(initMode = None, 
                         sparse_reward = True, 
                         which_hand=which_hand,
                         observation_type = 'ee_object_all',
@@ -3343,8 +3360,8 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
                         xml_filename = xml_filename,
                         custom_frame_skip = 10, # 0.005 * 10 =0.05s per step
                         
-                        # ur3_random_init = False,
                         )
+    env = gym_custom.make(env_id , **env_kwargs)
     
     # multi_step=50 # 1step : 0.1s -> 10Hz
     # multi_step=50 # 1step : 0.002s -> 500Hz
@@ -3358,7 +3375,7 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
                             ur3_scale_factor=ur3_scale_factor,
                             gripper_scale_factor=gripper_scale_factor,
                             # so3_constraint='vertical_side',
-                            action_downscale=0.015, # Assuming tanh action,
+                            action_downscale=0.02, # Assuming tanh action,
                             gripper_force_scale=1,
                             )
     # 1 * 0.02 = maximum 0.02m per 1step
@@ -3366,12 +3383,29 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     dt = env.dt
     # dt = 0.1
     print('dt : ', dt)
+    print('Mocap env는 어처피 한 스텝안에 그만큼 움직이기만 하면 되는거라 굳이 dt가 의미없음. 즉 action scale이 커도 실제 움직일떄 긴 타임스텝동안 움직이면 되니까 문제 x!')
+    if multi_objects:
+        weight = np.array([0,1,0,0], dtype=np.float32)
+        env.set_goal_weight(weight) 
+        
+        indices =[]
+        num_elements = [3, 3*num_objects, 3*num_objects, 2, 3*num_objects, 3*num_objects, 3*num_objects, 3, 2]
+        elements_sum = 0
+        indices = []
+        for idx, element in enumerate(num_elements):
+            elements_sum+=element
+            indices.append(elements_sum)   
+    else:
+        pass
     obs = env.reset()
     r_joint_qpos = env.sim.data.get_joint_qpos('right_gripper:r_gripper_finger_joint')
     l_joint_qpos = env.sim.data.get_joint_qpos('right_gripper:l_gripper_finger_joint')
     print('r joint q : {} l joint q : {}'.format(r_joint_qpos, l_joint_qpos))
     print('dummy right body for weld : {}'.format(env.sim.data.get_body_xpos('right_gripper:right_dummy_body_for_weld')))
-    grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
+    if multi_objects:
+        grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], indices, axis=-1)
+    else:
+        grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
     print('g pos : {} o pos : {} o relpos : {} g state : {} o rot : {} o velp : {} o velr : {} g velp : {} g vel : {}'.format(grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel))
     
     # while True:
@@ -3385,11 +3419,37 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     # sys.exit()
 
     # To test action is delta pos
-    print('close')    
-    for i in range(10):        
-        next_obs, reward, done, info = env.step(np.array([0.0, 0.0, 0.0, 1]))
+    # print('close')    
+    # for i in range(10):        
+    #     next_obs, reward, done, info = env.step(np.array([1.0, -0.5, 0.0, -1]))
+    #     env.render()
+    #     grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(next_obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
+    #     r_joint_qpos = env.sim.data.get_joint_qpos('right_gripper:r_gripper_finger_joint')
+    #     l_joint_qpos = env.sim.data.get_joint_qpos('right_gripper:l_gripper_finger_joint')
+    #     # print('ee pos : {} '.format(env.get_endeff_pos('right')))
+    #     # print('o pos : {} o relpos : {} o rot : {} o velp : {} o velr : {} g velp : {} '.format(object_pos, object_rel_pos, object_rot, object_velp, object_velr, grip_velp))
+    #     # print('g pos : {} o pos : {} o relpos : {} g state : {} o rot : {} o velp : {} o velr : {} g velp : {} g vel : {}'.format(grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel))
+    #     print('g pos : {} g state : {} g velp : {} g vel : {}'.format(grip_pos, gripper_state, grip_velp, gripper_vel))
+    #     # print('r joint q : {} l joint q : {}'.format(r_joint_qpos, l_joint_qpos))
+    #     # print('dummy right body for weld : {}'.format(env.sim.data.get_body_xpos('right_gripper:right_dummy_body_for_weld')))
+    #     obs = next_obs
+    # while True:
+    #     env.render()
+    # sys.exit()
+
+
+    # To test robotiq is well welded to flat gripper
+    for i in range(100):
+        if i % 10 <5:
+            action = np.array([0.0, 0, 0, 1])
+        else:
+            action = np.array([0.0, 0, 0, -1])
+        next_obs, reward, done, info = env.step(action)
         env.render()
-        grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(next_obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
+        if multi_objects:
+            grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(next_obs['observation'], indices, axis=-1)
+        else:
+            grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(next_obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
         r_joint_qpos = env.sim.data.get_joint_qpos('right_gripper:r_gripper_finger_joint')
         l_joint_qpos = env.sim.data.get_joint_qpos('right_gripper:l_gripper_finger_joint')
         # print('ee pos : {} '.format(env.get_endeff_pos('right')))
@@ -3399,50 +3459,9 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
         # print('r joint q : {} l joint q : {}'.format(r_joint_qpos, l_joint_qpos))
         # print('dummy right body for weld : {}'.format(env.sim.data.get_body_xpos('right_gripper:right_dummy_body_for_weld')))
         obs = next_obs
-    while True:
-        env.render()
-    sys.exit()
-
-    # for i in range(2):
-    #     print('open')
-    #     env.step(np.array([0.0, 0.0, 0.0, -1]))
-    #     r_joint_qpos = env.sim.data.get_joint_qpos('right_gripper:r_gripper_finger_joint')
-    #     l_joint_qpos = env.sim.data.get_joint_qpos('right_gripper:l_gripper_finger_joint')
-    #     print('r joint q : {} l joint q : {}'.format(r_joint_qpos, l_joint_qpos))
-    #     print('dummy right body for weld : {}'.format(env.sim.data.get_body_xpos('right_gripper:right_dummy_body_for_weld')))
     # while True:
     #     env.render()
-    # # while True :
-    # #     env.render()
-    # # _, right_ee_pos, _ = env.forward_kinematics_ee(qpos_right, 'right')
-    # current_right_ee_pos = env.get_endeff_pos('right')
-    # object_pos = env.get_site_pos('objSite')
-    # print('init right ee : {} obj : {}'.format(current_right_ee_pos, object_pos))
-    
-    # for t in range(4):        
-    #     action = np.array([0.0, 0.0, 0.0, 1.0])*1
-    #     next_obs, _, _, _ = env.step(action.copy())
-    #     if render: env.render()
-    #     # TODO: get_obs_dict() takes a long time causing timing issues.
-    #     #   Is it due to Upboard's lackluster performance or some deeper
-    #     #   issues within UR Script wrppaer?
-    #     qpos_right = env._get_ur3_qpos()[:env.ur3_nqpos]
-    #     qpos_left = env._get_ur3_qpos()[env.ur3_nqpos:]
-    #     qvel_right = env._get_ur3_qvel()[:env.ur3_nqvel]
-    #     qvel_left = env._get_ur3_qvel()[env.ur3_nqvel:]
-    #     _, right_ee_pos, _ = env.forward_kinematics_ee(qpos_right, 'right')
-    #     _, left_ee_pos, _ = env.forward_kinematics_ee(qpos_left, 'left')
-    #     current_right_ee_pos = env.get_endeff_pos('right')
-    #     object_pos = env.get_site_pos('objSite')
-        
-    #     gripper_qpos_right = env._get_gripper_qpos()[:env.gripper_nqpos]
-    #     gripper_qpos_left = env._get_gripper_qpos()[env.gripper_nqpos:]
-    #     print('step : {}, right ee : {} obj : {} act : {}'.format(t, right_ee_pos, object_pos, action))
-        
-    #     obs = next_obs
-
-    # while True :
-    #     env.render()
+    # sys.exit()
 
 
 
@@ -3469,15 +3488,26 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     wait_per_for_loop = False
     
     observations =[]
+
     for episode in range(n_episodes):
-        obs = env.reset()
+        # obs = env.reset()
         desired_goal =obs['desired_goal']
         current_right_ee_pos = env.get_endeff_pos('right')
-        grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
+        if multi_objects:
+            grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], indices, axis=-1)
+            object_pos = object_pos[env.goal_object_idx*3:(env.goal_object_idx+1)*3]
+        else:
+            grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
+        
         # print('reset, g pos : {} o pos : {} o relpos : {} g state : {} o rot : {} o velp : {} o velr : {} g velp : {} g vel : {}'.format(grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel))
         print('reset, o pos : {} o rot : {} '.format(object_pos, object_rot))
         # print('reset, o velp : {} o velr : {} g velp : {} '.format(object_velp, object_velr, grip_velp))
-        
+        # for i in range(100): # 일부러 gripper 부시고 시작
+        #     if i % 10 <5:
+        #         action = np.array([0.0, 0, 0, 1])
+        #     else:
+        #         action = np.array([0.0, 0, 0, -1])
+        #     next_obs, reward, done, info = env.step(action)
                 
         obs_list =[]
         obs_list.append(np.concatenate([obs['observation'], obs['desired_goal']], axis =-1))
@@ -3523,9 +3553,14 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
 
                 # print('time: %f [s]'%(t*dt))
                 # print('step : {}, right ee : {} obj : {} act : {}'.format(t, right_ee_pos, object_pos, action))
-                grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
+                if multi_objects:
+                    grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], indices, axis=-1)
+                    object_pos = object_pos[env.goal_object_idx*3:(env.goal_object_idx+1)*3]
+
+                else:
+                    grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
                 # print('step : {}, g pos : {} o pos : {} o relpos : {} g state : {} o rot : {} o velp : {} o velr : {} g velp : {} g vel : {}'.format(t, grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel))
-                print('step : {} o pos : {}  o rot : {} '.format(t, object_pos, object_rot))
+                print('step : {} o pos : {}  g_state : {} '.format(t, object_pos, gripper_state))
                 # print('step : {} o velp : {} o velr : {} g velp : {} '.format(t, object_velp, object_velr, grip_velp))
                 # print('right arm joint pos error [deg]: %f vel error [dps]: %f'%(np.rad2deg(right_pos_err), np.rad2deg(right_vel_err)))
                 # print('left arm joint pos error [deg]: %f vel error [dps]: %f'%(np.rad2deg(left_pos_err), np.rad2deg(left_vel_err)))
@@ -3572,9 +3607,14 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
                 object_pos = env.get_site_pos('objSite')
                 # print('time: %f [s]'%(t*dt))
                 # print('step : {}, right ee : {} obj : {} act : {} reward : {}'.format(t, right_ee_pos, object_pos, action, reward))
-                grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
+                if multi_objects:
+                    grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], indices, axis=-1)
+                    object_pos = object_pos[env.goal_object_idx*3:(env.goal_object_idx+1)*3]
+
+                else:
+                    grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
                 # print('step : {}, g pos : {} o pos : {} o relpos : {} g state : {} o rot : {} o velp : {} o velr : {} g velp : {} g vel : {}'.format(t, grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel))
-                print('step : {} o pos : {}  o rot : {} '.format(t, object_pos, object_rot))
+                print('step : {} o pos : {}  g_state : {} '.format(t, object_pos, gripper_state))
                 # print('step : {} o velp : {} o velr : {} g velp : {} '.format(t, object_velp, object_velr, grip_velp))                
                 # print('right arm joint pos error [deg]: %f vel error [dps]: %f'%(np.rad2deg(right_pos_err), np.rad2deg(right_vel_err)))
                 # print('left arm joint pos error [deg]: %f vel error [dps]: %f'%(np.rad2deg(left_pos_err), np.rad2deg(left_vel_err)))
@@ -3641,8 +3681,8 @@ if __name__ == '__main__':
     # dscho_posxyz_v5_test(render=True)
     # dscho_posxyz_single_v4_v5_test(render=True)
     # dscho_init_qpos_candidate_pickling(render=True)
-    dscho_single_ur3_object_test(render=False, make_video = False)
-    # dscho_mocap_single_ur3_object_test(render=False, make_video = False)
+    # dscho_single_ur3_object_test(render=False, make_video = False)
+    dscho_mocap_single_ur3_object_test(render=False, make_video = True)
 
 
     # 3. Misc. tests
