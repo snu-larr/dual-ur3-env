@@ -767,9 +767,8 @@ class Robotiq_Two_Finger_Gripper(object):
         self.add_line_to_program("rq_gripper_pos_and_wait("+str(force)+")")
 
 
-    def get_gripper_position(self):
-        raise NotImplementedError
-        self.add_line_to_program("rq_get_position()")
+    def define_gripper_position_var(self):
+        self.add_line_to_program("gripper_pos = rq_get_position()")
         
 
     def add_line_to_program(self, new_line):

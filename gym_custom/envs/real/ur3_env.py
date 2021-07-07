@@ -138,21 +138,37 @@ def servoj_speedj_example(host_ip, rate):
     obs = real_env.reset()
     init_qpos = real_env._nparray_to_dict(obs)['qpos']
     goal_qpos = init_qpos.copy()
-    goal_qpos[-1] += np.pi/2*1.5
+    goal_qpos[-1] += np.pi/2*1.0
     waypoints_qpos = np.linspace(init_qpos, goal_qpos, rate*2, axis=0)
     waypoints_qvel = np.diff(waypoints_qpos, axis=0)*real_env.rate._freq
     
     # close-open-close gripper
-    print('close')
-    real_env.step({'close_gripper': {}})
-    time.sleep(3.0)
-    print('open')
-    real_env.step({'open_gripper': {}})
-    time.sleep(3.0)
-    print('close')
-    real_env.step({'close_gripper': {}})
-    time.sleep(5.0)
+    # print('close')
+    # real_env.step({'close_gripper': {}})
+    # time.sleep(3.0)
+    # print('open')
+    # real_env.step({'open_gripper': {}})
+    # time.sleep(3.0)
+    # print('close')
+    # real_env.step({'close_gripper': {}})
+    # time.sleep(5.0)
     
+
+    wait = True
+    
+    print('test open gripper')
+    real_env.interface.move_gripper(g=10, wait=wait)
+    time.sleep(3)
+    grip_pos = real_env.interface.get_gripper_position()
+    print('grip pos : ', grip_pos)
+
+    print('test close gripper')
+    real_env.interface.move_gripper(g=150, wait=wait)
+    time.sleep(3)
+    grip_pos = real_env.interface.get_gripper_position()
+    print('grip pos : ', grip_pos)
+
+
     if prompt_yes_or_no('servoj to %s deg?'%(np.rad2deg(goal_qpos))) is False:
         print('exiting program!')
         sys.exit()
@@ -200,15 +216,17 @@ def servoj_speedj_example(host_ip, rate):
     print('done!')
     
     # open-close-open gripper
-    print('open')
-    real_env.step({'open_gripper': {}})
-    time.sleep(3.0)
-    print('close')
-    real_env.step({'close_gripper': {}})
-    time.sleep(3.0)
-    print('open')
-    real_env.step({'open_gripper': {}})
-    time.sleep(5.0)
+    # print('open')
+    # real_env.step({'open_gripper': {}})
+    # time.sleep(3.0)
+    # print('close')
+    # real_env.step({'close_gripper': {}})
+    # time.sleep(3.0)
+    # print('open')
+    # real_env.step({'open_gripper': {}})
+    # time.sleep(5.0)
+
+    
 
 def sanity_check(host_ip):
     from gym_custom.envs.real.ur.drivers import URBasic
@@ -289,26 +307,67 @@ def gripper_check(host_ip):
     robotModel = URBasic.robotModel.RobotModel()
     robot = URBasic.urScriptExt.UrScriptExt(host=host_ip, robotModel=robotModel, **gripper_kwargs)
     robot.reset_error()
+    
+    output_bit_register = robotModel.OutputBitRegister()
+    output_int_register = robotModel.OutputIntRegister()
+    output_double_register = robotModel.OutputDoubleRegister()
+    
+    
+    def print_register():
+        print('output bit register : ', robotModel.OutputBitRegister())
+        print('output int register : ', robotModel.OutputIntRegister())
+        print('output double register : ', robotModel.OutputDoubleRegister())
+        print('tool analog input0 : ', robotModel.ToolAnalogInput0())
+        print('tool analog input1 : ', robotModel.ToolAnalogInput1())
+        
 
-    # close-open-close-open gripper
-    print('closing gripper')
-    robot.operate_gripper(255)
-    time.sleep(3)
-    print('opening gripper')
-    robot.operate_gripper(0)
-    time.sleep(3)
-    print('closing gripper')
-    robot.operate_gripper(255)
-    time.sleep(3)
-    print('opening gripper')
-    robot.operate_gripper(0)
-    time.sleep(3)
+    option=2
+    if option==1: #jgkim ver
+        # close-open-close-open gripper
+        print('closing gripper')
+        robot.operate_gripper(255)
+        print_register()
+        time.sleep(3)
+        print('opening gripper')
+        robot.operate_gripper(0)
+        print_register()
+        time.sleep(3)
+        print('closing gripper')
+        robot.operate_gripper(255)
+        print_register()
+        time.sleep(3)
+        print('opening gripper')
+        robot.operate_gripper(0)
+        print_register()
+        time.sleep(3)
 
-    print('done')
-    robot.close()
+        print('done')
+        robot.close()
+    elif option==2:
+        wait = True
+        
+        # print('test gripper reset')
+        # robot.test_gripper_reset()
+        # time.sleep(3)
+
+        print('test open gripper')
+        robot.move_gripper(10, wait=wait)
+        
+        time.sleep(3)
+        grip_pos = robot.get_gripper_position()
+        print('grip pos : ', grip_pos)
+
+        print('test close gripper')
+        robot.move_gripper(150, wait=wait)
+        
+        time.sleep(3)
+        grip_pos = robot.get_gripper_position()
+        print('grip pos : ', grip_pos)
+
+        robot.close()
 
 if __name__ == "__main__":
     # sanity_check(host_ip='192.168.5.101')
     # gripper_check(host_ip='192.168.5.101')
-    # servoj_speedj_example(host_ip='192.168.5.101', rate=25)
+    servoj_speedj_example(host_ip='192.168.5.101', rate=20)
     pass
