@@ -44,3 +44,6 @@ vizdoom.ini
 # UR data/event logs
 Ur*.csv
 Ur*.log
+
+# dscho add
+example_video/

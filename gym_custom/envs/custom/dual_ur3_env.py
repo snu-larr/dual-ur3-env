@@ -26,7 +26,9 @@ object_xmls = ['dscho_dual_ur3_object.xml', 'dscho_dual_ur3_object_flat_gripper.
              'dscho_dual_ur3_mocap_object.xml', 'dscho_dual_ur3_mocap_object_flat_gripper.xml', \
              'dscho_dual_ur3_upright_mocap_object_flat_gripper.xml', ]
 
-multi_object_xmls = ['dscho_dual_ur3_upright_mocap_4object_flat_gripper.xml']
+multi_task_xmls = ['dscho_dual_ur3_upright_mocap_door_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_button_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_drawer_flat_gripper.xml',]
+
+multi_object_xmls = ['dscho_dual_ur3_upright_mocap_4object_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_6object_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_8object_flat_gripper.xml']
 
 class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
 
@@ -83,6 +85,10 @@ class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
             self.mujoco_xml_full_path = os.path.join(os.path.dirname(__file__), 'assets/ur3/'+xml_filename)
             self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [7]*self.num_objects # cube object
             self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, [6]*self.num_objects
+        elif xml_filename in multi_task_xmls:
+            self.mujoco_xml_full_path = os.path.join(os.path.dirname(__file__), 'assets/ur3/'+xml_filename)
+            self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [1] # hinge or slide joint
+            self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, [1]
             
             
 
@@ -192,10 +198,16 @@ class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
         self.kinematics_params['T_wb_left'][0:3,0:3] = self.sim.data.get_body_xmat('left_arm_rotz').reshape([3,3]).copy()
         self.kinematics_params['T_wb_left'][0:3,3] = self.sim.data.get_body_xpos('left_arm_rotz').copy()
 
+        self._export_kinematics_params()
+        # path_to_pkl = os.path.join(os.path.dirname(__file__), '../real/ur/dual_ur3_kinematics_params.pkl')
+        # if not os.path.isfile(path_to_pkl):
+        #     pickle.dump(self.kinematics_params, open(path_to_pkl, 'wb'))
+
+    def _export_kinematics_params(self):
+        '''overridable method'''
         path_to_pkl = os.path.join(os.path.dirname(__file__), '../real/ur/dual_ur3_kinematics_params.pkl')
         if not os.path.isfile(path_to_pkl):
             pickle.dump(self.kinematics_params, open(path_to_pkl, 'wb'))
-
     
     # Utilities (general)
 

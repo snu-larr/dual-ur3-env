@@ -30,8 +30,8 @@ import numpy as np
 import time
 import sys
 
-from .. import urx
-from ..urx.robotiq_two_finger_gripper import Robotiq_Two_Finger_Gripper 
+# from .. import urx
+# from ..urx.robotiq_two_finger_gripper import Robotiq_Two_Finger_Gripper 
 
 class UrScriptExt(URBasic.urScript.UrScript):
     '''
@@ -62,7 +62,7 @@ class UrScriptExt(URBasic.urScript.UrScript):
 
 
     # def __init__(self, host, robotModel, hasForceTorque=False): dscho modified
-    def __init__(self, host, robotModel, hasForceTorque=False, **gripper_kwargs): 
+    def __init__(self, host, robotModel, hasForceTorque=False): 
         if host is None: #Only for enable code completion
             return
         super(UrScriptExt, self).__init__(host, robotModel, hasForceTorque)        
@@ -72,12 +72,8 @@ class UrScriptExt(URBasic.urScript.UrScript):
         self.print_actual_tcp_pose()
         self.print_actual_joint_positions()
         self.__logger.info('Init done')
-        # dscho modified
-        # self.rob = urx.Robot(host)
-        # self.robotiqgrip = Robotiq_Two_Finger_Gripper(**gripper_kwargs)
         
-        self.rob = None
-        self.robotiqgrip = None
+        # dscho modified        
         self.robotiq_gripper = URBasic.robotiq_gripper.RobotiqGripper()
         self.robotiq_gripper.connect(hostname=host, port=63352)
         self.robotiq_gripper.activate()
@@ -87,108 +83,20 @@ class UrScriptExt(URBasic.urScript.UrScript):
 
         
 
-    # dscho modified
-    def operate_gripper(self, value):
-        '''
-        On/Off control of Gripper, 0 : open, 255 : gripper
-        '''
-        if value >255/2 :
-            self.robotiqgrip.close_gripper()
-        elif value <=255/2 and value >= 0 :
-            self.robotiqgrip.open_gripper()
-        
-        self.robotiqgrip.define_gripper_position_var()
-
-        self.rob.send_program(self.robotiqgrip.ret_program_to_run())
-        self.robotiqgrip.reset()
-    
-    def force_gripper(self, force):
-        self.robotiqgrip.force_gripper(force)
-        self.rob.send_program(self.robotiqgrip.ret_program_to_run())
-        self.robotiqgrip.reset()
-
-    # def get_gripper_position(self):
-    #     self.robotiqgrip.get_gripper_position()
-
-
-
-    def move_gripper(self, desired_pos, wait = True):
+    def move_gripper_position(self, desired_pos, wait = True):
         if wait:
             self.robotiq_gripper.move_and_wait_for_pos(position=desired_pos, speed=1, force=0) # Actually, speed has no effect
         else :
             self.robotiq_gripper.move(position=desired_pos, speed=1, force=0)
 
-
     def get_gripper_position(self):
         return self.robotiq_gripper.get_current_position()
-
-#     # dscho add 2021 0701
-#     def test_gripper_reset(self, wait=True):
-#         # NOTE : It should be called after every episode ends.
-
-#         # define everything related to gripper
-# #         prg =  '''def reset_gripper():
-# # {gripper_str}
-# # end
-# # '''
-#         # movestr = self._move(movetype='j', pose=pose, a=a, v=v, t=t, r=r, wait=wait, q=q)
-        
-#         programString = self.robotiqgrip.ret_program_to_run()
-#         if(programString == "") :
-#             raise NotImplementedError('you should reset the gripper interface. There is no program string')
-
-#         # programString = prg.format(**locals())
-        
-#         self.robotConnector.RealTimeClient.SendProgram(programString)
-#         if(wait):
-#             self.waitRobotIdleOrStopFlag()
-        
-#         #self.robotiqgrip.reset()
-
-#     def test_move_gripper_pos(self, desired_gripper_pos, wait=True):
-#         # just utilize the functions defined when self.test_gripper_reset() is called.        
-#         assert desired_gripper_pos >= 0 and desired_gripper_pos <= 255, "Assume desired gripper pos is scaled to 0 ~255"
-#         assert not wait, "It is expected to non wait mode for non blocking gripper action"
-#         # NOTE : if gripper가 물체 집어서 desired pos까지 못움직일때 rq_move가 어떻게 반응하는지 check!
-#         self.robotiqgrip.add_line_to_program("rq_move({desired_gripper_pos})")
-#         prg = self.robotiqgrip.ret_program_to_run()
-        
-#         # prg = 'rq_move({desired_gripper_pos})\n'
-#         # "rq_gripper_pos_and_wait("+str(force)+")"
-        
-#         programString = prg.format(**locals())
-        
-#         self.robotConnector.RealTimeClient.Send(programString)
-#         if(wait):
-#             self.waitRobotIdleOrStopFlag()
-        
-#         self.robotiqgrip.reset()
-
-#     def test_get_gripper_pos(self, wait=True):
-#         # just utilize the functions defined when self.test_gripper_reset() is called.        
-#         assert not wait, "It is expected to non wait mode for non blocking gripper action"
-#         # NOTE : if gripper가 물체 집어서 desired pos까지 못움직일때 rq_move가 어떻게 반응하는지 check!
-#         prg = 'rq_current_pos()\n'
-#         # "rq_gripper_pos_and_wait("+str(force)+")"
-#         programString = prg.format(**locals())
-        
-#         self.robotConnector.RealTimeClient.Send(programString)
-#         if(wait):
-#             self.waitRobotIdleOrStopFlag()
-        
-        
-#         # from get_actual_joint_speeds()
-#         # if(wait):
-#         #     self.sync()
-#         # return self.robotConnector.RobotModel.ActualQD()
-
 
     def close(self):
         self.print_actual_tcp_pose()
         self.print_actual_joint_positions()
         self.robotConnector.close()
         # dscho modified
-        # self.rob.close()
         self.robotiq_gripper.disconnect()
 
     def reset_error(self):

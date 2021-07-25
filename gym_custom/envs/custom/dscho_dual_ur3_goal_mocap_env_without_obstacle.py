@@ -38,6 +38,31 @@ def colorize(string, color, bold=False, highlight=False):
     return '\x1b[%sm%s\x1b[0m' % (';'.join(attr), string)
 
 
+def generate_points_with_min_distance(n, shape, min_dist, x_min, x_max, y_min, y_max):
+    # compute grid shape based on number of points
+    width_ratio = shape[1] / shape[0]
+    num_y = np.int32(np.sqrt(n / width_ratio)) + 1
+    num_x = np.int32(n / num_y) + 1
+
+    # create regularly spaced neurons
+    # x = np.linspace(0., shape[1]-1, num_x, dtype=np.float32)
+    # y = np.linspace(0., shape[0]-1, num_y, dtype=np.float32)
+    x = np.linspace(x_min, x_max, num_x, dtype=np.float32)
+    y = np.linspace(y_min, y_max, num_y, dtype=np.float32)
+    coords = np.stack(np.meshgrid(x, y), -1).reshape(-1,2)
+
+    # compute spacing
+    init_dist = np.min((x[1]-x[0], y[1]-y[0]))
+
+    # perturb points
+    max_movement = (init_dist - min_dist)/2
+    noise = np.random.uniform(low=-max_movement,
+                                high=max_movement,
+                                size=(len(coords), 2))
+    coords += noise
+
+    return coords
+
 class DummyWrapper():
     
     def __init__(self, env):
@@ -486,6 +511,15 @@ class DSCHODualUR3MocapEnv(DualUR3Gripper):
             # assert 2*self.ur3_nact + 2*self.gripper_nact == self.model.nu, 'Number of action elements mismatch'
             assert 2*self.gripper_nact == self.model.nu, 'Number of action elements mismatch'
     
+    def _export_kinematics_params(self):
+        if self.init_qpos_type == 'upright':
+            path_to_pkl = os.path.join(os.path.dirname(__file__), '../real/ur/upright_ur3_kinematics_params.pkl')
+            if not os.path.isfile(path_to_pkl):
+                pickle.dump(self.kinematics_params, open(path_to_pkl, 'wb'))
+        else:
+            super()._export_kinematics_params()
+        
+
     def _set_mocap_to_desired_state(self):
         if self.init_qpos_type=='upright':
             right_gripper_target = np.array([0.0, -0.3, 0.85])
@@ -904,30 +938,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
     def sample_goal(self, full_state_goal):
         # need to mod for resample if goal is inside the wall
         if full_state_goal:
-            
-            t=0
-            p = np.array([np.inf, np.inf, np.inf])
-            # while not ((p <= self.goal_ee_pos_space.high).all() and (p >= self.goal_ee_pos_space.low).all()):
-            while True:
-                goal_qpos = np.random.uniform(
-                    self.goal_qpos_space.low,
-                    self.goal_qpos_space.high,
-                    size=(self.goal_qpos_space.low.size),
-                )
-                # p = self.get_endeff_pos(arm=self.which_hand) 이걸로 구하면 샘플한 qpos가 아닌 현재 qpos기준 ee나오니까 안돼!
-                R, p, _ = self.forward_kinematics_ee(goal_qpos, arm=self.which_hand)
-                
-
-                t+=1
-            print('{} hand resample num : {}'.format(self.which_hand, t))
-            if self.fixed_goal_qvel:
-                goal_qvel = np.zeros(int(self.ur3_nqvel))
-            else :
-                goal_qvel = self.goal_qvel_space.sample()
-            if self.trigonometry_observation:
-                goal_qpos = np.concatenate([np.cos(goal_qpos), np.sin(goal_qpos)], axis = -1)
-
-            goal = np.concatenate([goal_qpos, goal_qvel, p], axis =-1) #[qpos, qvel, ee_pos]
+            raise NotImplementedError
         else :
             if not self.has_object: # reach
                 goal_ee_pos = np.random.uniform(
@@ -951,8 +962,37 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                     goal = None
                     raise NotImplementedError
                 elif self.task in ['drawer_open']:
-                    goal = None
-                    raise NotImplementedError
+                    drawer_wall_site_pos = self.sim.data.get_site_xpos('drawer_wall')
+                    drawer_handle_site_pos = self.sim.data.get_site_xpos('drawer_handle')
+                    opening_distance = np.random.uniform(0.1,0.15)
+                    opening_direction_vector = (drawer_handle_site_pos- drawer_wall_site_pos)/np.linalg.norm(drawer_handle_site_pos- drawer_wall_site_pos)*opening_distance
+                    goal = drawer_wall_site_pos + opening_direction_vector
+                    
+                elif self.task in ['drawer_close']:
+                    drawer_wall_site_pos = self.sim.data.get_site_xpos('drawer_wall')
+                    drawer_handle_site_pos = self.sim.data.get_site_xpos('drawer_handle')
+                    closing_distance = np.random.uniform(-0.15,-0.1)
+                    closing_direction_vector = (drawer_handle_site_pos- drawer_wall_site_pos)/np.linalg.norm(drawer_handle_site_pos- drawer_wall_site_pos)*closing_distance
+                    
+                    goal = drawer_handle_site_pos + closing_direction_vector
+                    # print('drawer handle : {} closing direc vec : {} goal : {}'.format(drawer_handle_site_pos, closing_direction_vector, goal))
+                    
+                elif self.task in ['door_open']:
+                    joint_site_pos = self.sim.data.get_site_xpos('joint_site')
+                    theta = np.random.uniform(-1, -0.3) +1.5707
+                    radius = 0.325 # np.linalg.norm(self.handle_start-joint_site_pos)
+                    from_joint_to_goal_vector = np.array([radius*np.cos(theta), radius*np.sin(theta), 0])
+                    goal = joint_site_pos+from_joint_to_goal_vector
+
+                elif self.task in ['door_close']:
+                    joint_site_pos = self.sim.data.get_site_xpos('joint_site')
+                    theta = np.random.uniform(-0.8, 0.1) +1.5707
+                    radius = 0.325 # np.linalg.norm(self.handle_start-joint_site_pos)
+                    from_joint_to_goal_vector = np.array([radius*np.cos(theta), radius*np.sin(theta), 0])
+                    goal = joint_site_pos+from_joint_to_goal_vector
+                elif self.task in ['button_press']:
+                    goal = self.sim.data.get_site_xpos('hole')
+
                 elif self.task in ['reach']:
                     goal_ee_pos = np.random.uniform(
                         self.goal_ee_pos_space.low,
@@ -1035,10 +1075,23 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                     assert object_qpos.shape == (7,)
                     object_qpos[:3] = object_pos
                     self.sim.data.set_joint_qpos('objjoint', object_qpos)
-
+            elif self.task in ['door_open']:
+                pass
+            elif self.task in ['door_close']:
+                hinge_qpos = self.sim.data.get_joint_qpos('doorjoint')                
+                hinge_qpos = -1
+                self.sim.data.set_joint_qpos('doorjoint', hinge_qpos)
+            elif self.task in ['drawer_open']:
+                pass
+            elif self.task in ['drawer_close']:
+                slide_qpos = self.sim.data.get_joint_qpos('goal_slidey')                
+                slide_qpos = -0.16
+                self.sim.data.set_joint_qpos('goal_slidey', slide_qpos)
+            elif self.task in ['button_press']:
+                pass
             else:
                 pass
-        
+        self.sim.forward()
         self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
         
         if self.has_object: # reach인 경우엔 필요x            
@@ -1047,11 +1100,13 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                     pass
                 elif debug_opt==2:
                     self._state_goal = object_pos.copy()
-            else:
+            elif self.task in ['pickandplace', 'push']:
                 while np.linalg.norm(object_pos - self._state_goal) < 0.05:
                     self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
+            else: # 'drawer, door, button
+                pass
             
-        self.sim.forward()
+        # self.sim.forward()
         
 
         self.previous_ee_pos = None
@@ -1115,18 +1170,37 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         
         if self.trigonometry_observation:
             qpos = np.concatenate([np.cos(qpos), np.sin(qpos)], axis = -1)
-
-        if self.has_object:
-            obj_pos = self.get_obj_pos(name='obj')
-            
-        else :
-            obj_pos = np.array([])
-
-        obj_rot = rotations.mat2euler(self.sim.data.get_site_xmat('objSite'))
+        
         # velocities
         dt = self.sim.nsubsteps * self.sim.model.opt.timestep # same as self.dt
-        obj_velp = self.sim.data.get_site_xvelp('objSite') * dt
-        obj_velr = self.sim.data.get_site_xvelr('objSite') * dt
+
+        if self.has_object:
+            if self.task in ['pickandplace', 'push']:
+                obj_pos = self.get_obj_pos(name='obj')
+                obj_rot = rotations.mat2euler(self.sim.data.get_site_xmat('objSite'))
+                obj_velp = self.sim.data.get_site_xvelp('objSite') * dt
+                obj_velr = self.sim.data.get_site_xvelr('objSite') * dt
+            elif self.task in ['door_open', 'door_close']:
+                obj_pos = self.sim.data.get_site_xpos('handle_site')
+                obj_rot = rotations.mat2euler(self.sim.data.get_site_xmat('handle_site'))
+                obj_velp = self.sim.data.get_site_xvelp('handle_site') * dt
+                obj_velr = self.sim.data.get_site_xvelr('handle_site') * dt            
+            elif self.task in ['drawer_open', 'drawer_close']:
+                obj_pos = self.sim.data.get_site_xpos('drawer_handle')
+                obj_rot = rotations.mat2euler(self.sim.data.get_site_xmat('drawer_handle'))
+                obj_velp = self.sim.data.get_site_xvelp('drawer_handle') * dt
+                obj_velr = self.sim.data.get_site_xvelr('drawer_handle') * dt           
+                
+            elif self.task in ['button_press']:
+                obj_pos = self.sim.data.get_site_xpos('buttonStart')
+                obj_rot = rotations.mat2euler(self.sim.data.get_site_xmat('buttonStart'))
+                obj_velp = self.sim.data.get_site_xvelp('buttonStart') * dt
+                obj_velr = self.sim.data.get_site_xvelr('buttonStart') * dt
+
+        else :
+            obj_pos, obj_rot, obj_velp, obj_velr = np.array([]), np.array([]), np.array([]), np.array([])
+
+        
         obj_rel_pos = obj_pos - ee_pos
         if self.flat_gripper:                
             gripper_state = np.array([self.sim.data.get_joint_qpos(self.which_hand+'_gripper:r_gripper_finger_joint'),
@@ -1187,7 +1261,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         else :
             if not self.has_object: # reach
                 achieved_goal = ee_pos
-            else: # pick and place, push, ...
+            else: # pick and place, push, door open, button press...
                 if self.task in ['reach']:
                     achieved_goal = ee_pos
                 else:
@@ -1608,26 +1682,18 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
         # randomly reset the initial position of an object
         if self.has_object:
             if self.task in ['pickandplace', 'push']:
+                x_min, y_min, z_min = self.goal_obj_pos_space.low
+                x_max, y_max, z_max = self.goal_obj_pos_space.high
+                # goal_obj_low = np.array([-0.15, -0.45, 0.77])
+                # goal_obj_high = np.array([0.15, -0.3, 0.95])
+                coords = generate_points_with_min_distance(n=self.num_objects, shape=(1,1), min_dist=0.05,\
+                     x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
+                np.random.shuffle(coords)
                 for i in range(self.num_objects):
-                    object_xpos = np.random.uniform(
-                                    self.goal_obj_pos_space.low,
-                                    self.goal_obj_pos_space.high,
-                                    size=(self.goal_obj_pos_space.low.size),
-                                )[:2]
-                    # object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
+                    object_xpos = coords[i]
+
                     object_pos = np.concatenate([object_xpos, np.array([0.75])], axis=-1)
                     
-                    ee_pos = self.get_endeff_pos(arm=self.which_hand)
-                    
-                    while np.linalg.norm(object_pos - ee_pos) < 0.05:
-                        object_xpos = np.random.uniform(
-                                    self.goal_obj_pos_space.low,
-                                    self.goal_obj_pos_space.high,
-                                    size=(self.goal_obj_pos_space.low.size),
-                                )[:2]
-                        object_pos = np.concatenate([object_xpos, np.array([0.75])], axis=-1)
-                    # print('In reset model, ee pos : {} obj pos : {}'.format(ee_pos, object_pos))
-
                     object_qpos = self.sim.data.get_joint_qpos('objjoint_'+str(i))
                     assert object_qpos.shape == (7,)
                     object_qpos[:3] = object_pos
@@ -1639,12 +1705,6 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
         
         self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
         
-        if self.has_object: # reach인 경우엔 필요x            
-            if self.task in ['reach']:
-                pass
-            else:
-                while np.linalg.norm(object_pos - self._state_goal) < 0.05:
-                    self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
             
         self.sim.forward()
         
@@ -1773,7 +1833,17 @@ class DSCHOSingleUR3AssembleEnv(DSCHOSingleUR3GoalMocapEnv):
         self.save_init_params(locals())
         super().__init__(has_object=True, block_gripper=False, task='assemble', *args, **kwargs)
 
-class DSCHOSingleUR3DrawerOpenEnv(DSCHOSingleUR3GoalMocapEnv):
+class DSCHOSingleUR3DrawerEnv(DSCHOSingleUR3GoalMocapEnv):
     def __init__(self, *args, **kwargs):
         self.save_init_params(locals())
-        super().__init__(has_object=True, block_gripper=False, task='drawer_open', *args, **kwargs)
+        super().__init__(has_object=True, block_gripper=False, *args, **kwargs)
+
+class DSCHOSingleUR3DoorEnv(DSCHOSingleUR3GoalMocapEnv):
+    def __init__(self, *args, **kwargs):
+        self.save_init_params(locals())
+        super().__init__(has_object=True, block_gripper=False, *args, **kwargs)
+
+class DSCHOSingleUR3ButtonEnv(DSCHOSingleUR3GoalMocapEnv):
+    def __init__(self, *args, **kwargs):
+        self.save_init_params(locals())
+        super().__init__(has_object=True, block_gripper=False, *args, **kwargs)

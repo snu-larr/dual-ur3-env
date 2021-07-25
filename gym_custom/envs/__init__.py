@@ -655,11 +655,11 @@ register(
     kwargs={'xml_filename' : 'dscho_dual_ur3_mocap_object.xml'}
 )
 register(
-    id='dscho-single-ur3-mocap-drawer-open-v1',
-    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_mocap_env_without_obstacle:DSCHOSingleUR3DrawerOpenEnv',
+    id='dscho-single-ur3-mocap-drawer-v1',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_mocap_env_without_obstacle:DSCHOSingleUR3DrawerEnv',
     max_episode_steps=None,
     reward_threshold=0.0,
-    kwargs={'xml_filename' : 'dscho_dual_ur3_mocap_object.xml'}
+    # kwargs={'xml_filename' : 'dscho_dual_ur3_mocap_object.xml'}
 )
 
 # MultiObject
@@ -669,6 +669,21 @@ register(
     max_episode_steps=None,
     reward_threshold=0.0,
     #kwargs={'xml_filename' : 'dscho_dual_ur3_mocap_object.xml'}
+)
+# Door
+register(
+    id='dscho-single-ur3-mocap-door-v1',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_mocap_env_without_obstacle:DSCHOSingleUR3DoorEnv',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    # kwargs={'xml_filename' : 'dscho_dual_ur3_mocap_door.xml', 'task' : 'door_open'}
+)
+register(
+    id='dscho-single-ur3-mocap-button-v1',
+    entry_point='gym_custom.envs.custom.dscho_dual_ur3_goal_mocap_env_without_obstacle:DSCHOSingleUR3ButtonEnv',
+    max_episode_steps=None,
+    reward_threshold=0.0,
+    # kwargs={'xml_filename' : 'dscho_dual_ur3_mocap_door.xml', 'task' : 'door_close'}
 )
 
 # Algorithmic

@@ -653,7 +653,7 @@ class DSCHODualUR3RealEnv(DualUR3RealEnv):
         super().__init__(*args, **kwargs)
         default_right_qpos = np.array([[-90.0, -90.0, -90.0, -90.0, -135.0, 180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
         default_left_qpos = np.array([[90.0, -90.0, 90.0, -90.0, 135.0, -180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
-        self.ICRA_2021_ver = False
+        self.ICRA_2021_ver = True
         if self.ICRA_2021_ver:
             if 'v0' in self.env_name :
                 raise NotImplementedError
@@ -686,7 +686,7 @@ class DSCHODualUR3RealEnv(DualUR3RealEnv):
         # Currently for dual env test with 0th index init qpos
         q_right_des_candidates = self.init_qpos_candidates['q_right_des'] # [num_candidate, qpos dim]
         q_left_des_candidates = self.init_qpos_candidates['q_left_des']
-        if self.ICRA_2021_ver
+        if self.ICRA_2021_ver:
             if 'Obstacle-v0' in self.env_name : # Not implemented
                 right_idx = -1
                 left_idx = -1  
@@ -1010,7 +1010,7 @@ class DSCHODualUR3PickAndPlaceRealEnv(DSCHODualUR3ObjectRealEnv):
 #single ur3 만들고 그 하위로 reachenv만들수도
 
 class DSCHOSingleUR3ReachRealEnv(DSCHODualUR3RealEnv):
-    
+    raise NotImplementedError('Not implemented (same as simulation)')
     # Sholud be used with URScriptWrapper
     
     def __init__(self,
@@ -1569,28 +1569,6 @@ def test_sigle_arm_gripper():
     
     print('done')
 
-
-
-
-
-
-
-
-
-
-
-    
-    
-    
-
-
-
-
-
-
-    
-    
-        
 
 if __name__ == "__main__":
     # test_for_ICRA2021()

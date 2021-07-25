@@ -3325,17 +3325,20 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     gripper_action = True
     
     #env_id = 'dscho-single-ur3-mocap-pickandplace-v1'
-    env_id = 'dscho-single-ur3-mocap-pickandplace-multiobject-v1'
+    # env_id = 'dscho-single-ur3-mocap-pickandplace-multiobject-v1'
+    env_id = 'dscho-single-ur3-mocap-door-v1'
+    # env_id = 'dscho-single-ur3-mocap-button-v1'
+    # env_id = 'dscho-single-ur3-mocap-drawer-v1'
     # env_id = 'dscho-single-ur3-mocap-reach-v1'
     # make_video = False
     which_hand = 'right'
     from gym_custom.envs.custom.dscho_dual_ur3_goal_mocap_env_without_obstacle import DSCHOSingleUR3PickAndPlaceEnv, MocapSingleWrapper
     
     upright_ver = True
-    multi_objects = True
+    multi_objects = False
     if multi_objects:
         assert upright_ver
-        num_objects = 4
+        num_objects = 6
         xml_filename= 'dscho_dual_ur3_upright_mocap_'+str(num_objects)+'object_flat_gripper.xml'
         env_kwargs= dict(initMode = None, 
                         sparse_reward = True, 
@@ -3349,23 +3352,36 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
                         num_objects=num_objects,
                         )
     else:
-        xml_filename= 'dscho_dual_ur3_upright_mocap_object_flat_gripper.xml' if upright_ver else 'dscho_dual_ur3_mocap_object_flat_gripper.xml'
-        env_kwargs= dict(initMode = None, 
-                        sparse_reward = True, 
-                        which_hand=which_hand,
-                        observation_type = 'ee_object_all',
-                        trigonometry_observation = False,
-                        so3_constraint='vertical_side', #사실상 의미x. so3 error calculation에만 사용
-                        flat_gripper = True, 
-                        xml_filename = xml_filename,
-                        custom_frame_skip = 10, # 0.005 * 10 =0.05s per step
-                        
-                        )
+        if 'door' in env_id:
+            env_kwargs = dict(xml_filename= 'dscho_dual_ur3_upright_mocap_door_flat_gripper.xml' if upright_ver else None,
+                             task='door_close',
+                            )
+        elif 'button' in env_id:
+            env_kwargs = dict(xml_filename= 'dscho_dual_ur3_upright_mocap_button_flat_gripper.xml' if upright_ver else None,
+                            task='button_press',
+                            )
+        elif 'drawer' in env_id:
+            env_kwargs = dict(xml_filename= 'dscho_dual_ur3_upright_mocap_drawer_flat_gripper.xml' if upright_ver else None,
+                            task='drawer_close',
+                            )
+        else:
+            env_kwargs = dict(xml_filename= 'dscho_dual_ur3_upright_mocap_object_flat_gripper.xml' if upright_ver else 'dscho_dual_ur3_mocap_object_flat_gripper.xml',
+                            )
+        
+        env_kwargs.update(dict(initMode = None, 
+                            sparse_reward = True, 
+                            which_hand=which_hand,
+                            observation_type = 'ee_object_all',
+                            trigonometry_observation = False,
+                            so3_constraint='vertical_side', #사실상 의미x. so3 error calculation에만 사용
+                            flat_gripper = True,                             
+                            custom_frame_skip = 10, # 0.005 * 10 =0.05s per step
+                            ))
     env = gym_custom.make(env_id , **env_kwargs)
     
     # multi_step=50 # 1step : 0.1s -> 10Hz
     # multi_step=50 # 1step : 0.002s -> 500Hz
-    multi_step=1 # 1step : 0.005s -> 20Hz (실제로 multi step만큼 밟는건 아니지만 dt를 위해서?(dt곱해진 게 state에 들어가니?))
+    multi_step=1 # 1step : 0.005s -> framsskip 10 곱하면 20Hz (실제로 multi step만큼 밟는건 아니지만 dt를 위해서?(dt곱해진 게 state에 들어가니?))
     env = MocapSingleWrapper(env=env,
                             # q_control_type=q_control_type,
                             # g_control_type=g_control_type,
@@ -3408,9 +3424,14 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
         grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
     print('g pos : {} o pos : {} o relpos : {} g state : {} o rot : {} o velp : {} o velr : {} g velp : {} g vel : {}'.format(grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel))
     
+    # env.render()
+    # time.sleep(2)
+    # for i in range(1):
+    #     env.step(np.array([0,0,0,0]))
     # while True:
     #     env.render()
     # sys.exit()
+
     # start = time.time()
     # for i in range(100):
     #     next_obs, reward, done, info = env.step(env.action_space.sample())
@@ -3445,7 +3466,7 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
         else:
             action = np.array([0.0, 0, 0, -1])
         next_obs, reward, done, info = env.step(action)
-        env.render()
+        # env.render()
         if multi_objects:
             grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(next_obs['observation'], indices, axis=-1)
         else:
@@ -3516,7 +3537,12 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
             for t in range(int(duration/dt)):
                 if i==0  :
                     if single:
-                        action_xyz = object_pos+ np.array([0,0,0.1])-current_right_ee_pos
+                        if env.task in ['door_open', 'door_close','drawer_open', 'drawer_close', 'button_press']:
+                            action_xyz = object_pos+ np.array([0.05,-0.05,0.15])-current_right_ee_pos
+                            # action_xyz = np.zeros(4)
+                        else:
+                            action_xyz = object_pos+ np.array([0,0,0.1])-current_right_ee_pos
+                        
                         action_xyz = np.tanh(action_scale*action_xyz)
                         action_grip = grip_scale*np.array([-1])
                         action = np.concatenate([action_xyz, action_grip], axis =-1) # open
@@ -3525,7 +3551,10 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
                         action = np.array([-0.0, 0.0, 1.0, -5.0, 0.0, 0.0, 1.0, -5.0])
                 elif i==1:
                     if single:
-                        action_xyz = object_pos-np.array([0,0,0.0])-current_right_ee_pos
+                        if env.task in ['door_open', 'door_close','drawer_open', 'drawer_close', 'button_press']:
+                            action_xyz = object_pos+ np.array([-0.05,0.05,0])-current_right_ee_pos
+                        else:
+                            action_xyz = object_pos-np.array([0,0,0.0])-current_right_ee_pos
                         action_xyz = np.tanh(action_scale*action_xyz)
                         action_grip = grip_scale*np.array([0.0]) # obj쪽으로 가면서 gripper 조금씩 close하려했는데 force이다보니 아무리 작은 value여도 0이상이면 닫히는 속도는 same
                         action = np.concatenate([action_xyz, action_grip]) # open
@@ -3534,7 +3563,7 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
                 
                 
                 
-                obs, _, _, _ = env.step(action.copy())
+                obs, reward, _, _ = env.step(action.copy())
                 if render: env.render()
                 # TODO: get_obs_dict() takes a long time causing timing issues.
                 #   Is it due to Upboard's lackluster performance or some deeper
@@ -3560,7 +3589,7 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
                 else:
                     grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
                 # print('step : {}, g pos : {} o pos : {} o relpos : {} g state : {} o rot : {} o velp : {} o velr : {} g velp : {} g vel : {}'.format(t, grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel))
-                print('step : {} o pos : {}  g_state : {} '.format(t, object_pos, gripper_state))
+                print('step : {} o pos : {}  g_state : {}  rew : {}'.format(t, object_pos, gripper_state, reward))
                 # print('step : {} o velp : {} o velr : {} g velp : {} '.format(t, object_velp, object_velr, grip_velp))
                 # print('right arm joint pos error [deg]: %f vel error [dps]: %f'%(np.rad2deg(right_pos_err), np.rad2deg(right_vel_err)))
                 # print('left arm joint pos error [deg]: %f vel error [dps]: %f'%(np.rad2deg(left_pos_err), np.rad2deg(left_vel_err)))
@@ -3614,7 +3643,7 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
                 else:
                     grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
                 # print('step : {}, g pos : {} o pos : {} o relpos : {} g state : {} o rot : {} o velp : {} o velr : {} g velp : {} g vel : {}'.format(t, grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel))
-                print('step : {} o pos : {}  g_state : {} '.format(t, object_pos, gripper_state))
+                print('step : {} o pos : {}  g_state : {} reward : {}'.format(t, object_pos, gripper_state, reward))
                 # print('step : {} o velp : {} o velr : {} g velp : {} '.format(t, object_velp, object_velr, grip_velp))                
                 # print('right arm joint pos error [deg]: %f vel error [dps]: %f'%(np.rad2deg(right_pos_err), np.rad2deg(right_vel_err)))
                 # print('left arm joint pos error [deg]: %f vel error [dps]: %f'%(np.rad2deg(left_pos_err), np.rad2deg(left_vel_err)))
