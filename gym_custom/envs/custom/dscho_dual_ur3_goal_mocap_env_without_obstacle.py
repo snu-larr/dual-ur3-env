@@ -1541,11 +1541,17 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
     
     def __init__(self,                
                 num_objects = 1,
+                multigoal_rl = False,
+                multigoal_type = None,
+                sequential_rl = False,
                 *args,
                 **kwargs
                 ):
         self.save_init_params(locals())
         self.num_objects = num_objects
+        self.multigoal_rl = multigoal_rl
+        self.multigoal_type = multigoal_type
+        self.sequential_rl = sequential_rl
         self.goal_object_idx = 0
         self.goal_weight_is_set = False
         super().__init__(has_object=True,  block_gripper=False,  task='pickandplace', *args, **kwargs)

@@ -3353,7 +3353,7 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
                         )
     else:
         if 'door' in env_id:
-            env_kwargs = dict(xml_filename= 'dscho_dual_ur3_upright_mocap_door_flat_gripper.xml' if upright_ver else None,
+            env_kwargs = dict(xml_filename= 'dscho_dual_ur3_upright_mocap_door_flat_gripper_ver2.xml' if upright_ver else None,
                              task='door_close',
                             )
         elif 'button' in env_id:
@@ -3361,7 +3361,7 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
                             task='button_press',
                             )
         elif 'drawer' in env_id:
-            env_kwargs = dict(xml_filename= 'dscho_dual_ur3_upright_mocap_drawer_flat_gripper.xml' if upright_ver else None,
+            env_kwargs = dict(xml_filename= 'dscho_dual_ur3_upright_mocap_drawer_flat_gripper_ver2.xml' if upright_ver else None,
                             task='drawer_close',
                             )
         else:
@@ -3431,6 +3431,11 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     # while True:
     #     env.render()
     # sys.exit()
+    # for i in range(100):
+    #     env.render()
+    #     env.step(np.array([0.0, 0, 0, 1.0]))
+    # sys.exit()
+    
 
     # start = time.time()
     # for i in range(100):
@@ -3538,7 +3543,7 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
                 if i==0  :
                     if single:
                         if env.task in ['door_open', 'door_close','drawer_open', 'drawer_close', 'button_press']:
-                            action_xyz = object_pos+ np.array([0.05,-0.05,0.15])-current_right_ee_pos
+                            action_xyz = object_pos+ np.array([0.1,-0.1,0.2])-current_right_ee_pos
                             # action_xyz = np.zeros(4)
                         else:
                             action_xyz = object_pos+ np.array([0,0,0.1])-current_right_ee_pos
@@ -3552,7 +3557,7 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
                 elif i==1:
                     if single:
                         if env.task in ['door_open', 'door_close','drawer_open', 'drawer_close', 'button_press']:
-                            action_xyz = object_pos+ np.array([-0.05,0.05,0])-current_right_ee_pos
+                            action_xyz = object_pos+ np.array([0.0,-0.05,0.1])-current_right_ee_pos
                         else:
                             action_xyz = object_pos-np.array([0,0,0.0])-current_right_ee_pos
                         action_xyz = np.tanh(action_scale*action_xyz)
@@ -3560,7 +3565,8 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
                         action = np.concatenate([action_xyz, action_grip]) # open
                     else :
                         action = np.array([-1.0, 0.0, -0.3, -5.0, 1.0, 0.0, -0.3,-5.0])
-                
+                # elif i==2:
+                #     action = np.array([0.1, 0, -0.05, 0.1])
                 
                 
                 obs, reward, _, _ = env.step(action.copy())
@@ -3619,6 +3625,8 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
                         action = np.array([0.0, 0.0, 1.0, 15.0, 0.0, 0.0, 1.0, 15.0])
                 elif i==3: #open gripper
                     action = np.array([0.0, 0.0, 0.0, -1.0])
+                # elif i==4:
+                #     action = np.array([-0.1, 0.0, 0.0, -1.0])
 
                 obs, reward, done, info = env.step(action.copy())
 
