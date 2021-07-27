@@ -2217,7 +2217,7 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
             ee_pos = info[self.which_hand+'_ee_pos']
             placingDist = np.linalg.norm(achieved_goal-desired_goal, axis =-1)
             # ee_offset = (ee_pos - desired_goal)[2] > self.ee_offset_threshold
-            ee_offset = np.linalg.norm(ee_pos - desired_goal, axis =-1) > self.ee_offset_threshold
+            ee_offset = np.linalg.norm(ee_pos - achieved_goal, axis =-1) > self.ee_offset_threshold
 
             if self.sparse_reward : 
                 if (placingDist < self.distance_threshold) and ee_offset:
