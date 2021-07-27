@@ -1640,7 +1640,7 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
         self.sequential_rl = sequential_rl
         self.weight_dim = weight_dim
         self.ee_offset_reward = ee_offset_reward
-        self.ee_offset_threshold = 0.1
+        self.ee_offset_threshold = 0.03
         self.goal_object_idx = 0
         self.goal_weight_is_set = False
         super().__init__(has_object=True,  block_gripper=False,  task='pickandplace', *args, **kwargs)
@@ -2001,9 +2001,12 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
         weight = np.zeros(self.weight_dim)
         for idx, obj_pos, goal in zip(range(self.num_objects), object_pos, desired_goal):
             d = np.linalg.norm(obj_pos-goal, axis =-1)            
-            ee_offset = True if not self.ee_offset_reward else (ee_pos - obj_pos)[2] > self.ee_offset_threshold # z 방향 0.05이상 올라가면
-
-            if (d > self.distance_threshold) or (not ee_offset):
+            # ee_offset = True if not self.ee_offset_reward else (ee_pos - obj_pos)[2] > self.ee_offset_threshold # z 방향 0.05이상 올라가면
+            ee_offset = True if not self.ee_offset_reward else np.linalg.norm(ee_pos - obj_pos, axis=-1) > self.ee_offset_threshold # 일정거리이상 멀어지면
+            # NOTE : just z 위치만가지고 하면 1번쨰 obj 갖다놓고 2번째 obj근처에 가려고 할떄 ee_offset False 되면서 weight가 다시 1번째 obj로 바뀌는 문제 생김
+            # NOTE : 즉, z 위치만 가지고 할게 아니라 distance 멀어지면?
+            # NOTE : 근데 이렇게 해도, 제대로 goal 놓아둔 obj 근처로 gripper가 갈일이 있으면 weight가 그 obj로 바뀌게됨
+            if (d > self.distance_threshold) or (not ee_offset): 
                 weight[idx] = 1.0
                 self.goal_object_idx = idx
                 break
@@ -2213,7 +2216,9 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
         if self.ee_offset_reward:
             ee_pos = info[self.which_hand+'_ee_pos']
             placingDist = np.linalg.norm(achieved_goal-desired_goal, axis =-1)
-            ee_offset = (ee_pos - desired_goal)[2] > self.ee_offset_threshold
+            # ee_offset = (ee_pos - desired_goal)[2] > self.ee_offset_threshold
+            ee_offset = np.linalg.norm(ee_pos - desired_goal, axis =-1) > self.ee_offset_threshold
+
             if self.sparse_reward : 
                 if (placingDist < self.distance_threshold) and ee_offset:
                     reward = 0.0
