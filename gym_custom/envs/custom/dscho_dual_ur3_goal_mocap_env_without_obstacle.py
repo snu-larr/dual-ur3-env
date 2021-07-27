@@ -63,6 +63,88 @@ def generate_points_with_min_distance(n, shape, min_dist, x_min, x_max, y_min, y
 
     return coords
 
+
+def dscho_generate_points_with_min_distance(n, min_dist, x_min, x_max, y_min, y_max):
+    # random uniform    
+    coords = np.random.uniform(np.array([x_min, y_min]), np.array([x_max, y_max]), size = [n, 2])
+    coords_temp = coords.copy()
+    dist_list = []
+    for i, xy in enumerate(coords):        
+        for j, xy_temp in enumerate(coords_temp[i+1:]):
+            dist = np.linalg.norm(xy-xy_temp, axis =-1)
+            dist_list.append(dist)
+    # nC2 개
+    distances = np.stack(dist_list, axis=0)
+    while (distances < min_dist).any():
+        coords = np.random.uniform(np.array([x_min, y_min]), np.array([x_max, y_max]), size = [n,2])
+        coords_temp = coords.copy()
+        dist_list = []
+        for i, xy in enumerate(coords):            
+            for j, xy_temp in enumerate(coords_temp[i+1:]):
+                dist = np.linalg.norm(xy-xy_temp, axis =-1)
+                dist_list.append(dist)
+        # nC2 개
+        distances = np.stack(dist_list, axis=0)
+    
+    return coords
+
+def dscho_generate_points_with_min_distance_ver2(n, min_dist, x_min, x_max, y_min, y_max):
+    # left half, right half    
+
+    # right half
+    coords = np.random.uniform(np.array([0, y_min]), np.array([x_max, y_max]), size = [int(n/2), 2])
+    if int(n/2) < 2:
+        pass
+    else:
+        coords_temp = coords.copy()
+        dist_list = []
+        for i, xy in enumerate(coords):        
+            for j, xy_temp in enumerate(coords_temp[i+1:]):
+                dist = np.linalg.norm(xy-xy_temp, axis =-1)
+                dist_list.append(dist)
+        # nC2 개
+        distances = np.stack(dist_list, axis=0)
+        while (distances < min_dist).any():
+            coords = np.random.uniform(np.array([0, y_min]), np.array([x_max, y_max]), size = [int(n/2),2])
+            coords_temp = coords.copy()
+            dist_list = []
+            for i, xy in enumerate(coords):            
+                for j, xy_temp in enumerate(coords_temp[i+1:]):
+                    dist = np.linalg.norm(xy-xy_temp, axis =-1)
+                    dist_list.append(dist)
+            # nC2 개
+            distances = np.stack(dist_list, axis=0)
+    
+    right_coords = coords.copy()
+
+    # left half
+    coords = np.random.uniform(np.array([x_min, y_min]), np.array([0, y_max]), size = [int(n/2), 2])
+    if int(n/2) < 2:
+        pass
+    else:
+        coords_temp = coords.copy()
+        dist_list = []
+        for i, xy in enumerate(coords):        
+            for j, xy_temp in enumerate(coords_temp[i+1:]):
+                dist = np.linalg.norm(xy-xy_temp, axis =-1)
+                dist_list.append(dist)
+        # nC2 개
+        distances = np.stack(dist_list, axis=0)
+        while (distances < min_dist).any():
+            coords = np.random.uniform(np.array([x_min, y_min]), np.array([0, y_max]), size = [int(n/2),2])
+            coords_temp = coords.copy()
+            dist_list = []
+            for i, xy in enumerate(coords):            
+                for j, xy_temp in enumerate(coords_temp[i+1:]):
+                    dist = np.linalg.norm(xy-xy_temp, axis =-1)
+                    dist_list.append(dist)
+            # nC2 개
+            distances = np.stack(dist_list, axis=0)
+        
+    left_coords = coords.copy()
+
+    return np.concatenate([right_coords, left_coords], axis =0)
+
 class DummyWrapper():
     
     def __init__(self, env):
@@ -895,19 +977,21 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
             ee_high = np.array([0.2, -0.2, 0.95])
 
         self.goal_ee_pos_space = Box(low = ee_low, high = ee_high, dtype=np.float32)
-        
+        self.table_z_offset = 0.755
         # Currently, Set the goal obj space same sa ee pos sapce
         if self.which_hand =='right': 
-            goal_obj_low = np.array([0.0, -0.45, 0.77])
+            goal_obj_low = np.array([0.0, -0.45, self.table_z_offset])
             goal_obj_high = np.array([0.3, -0.3, 0.95])
         
         elif self.which_hand =='left':
-            goal_obj_low = np.array([-0.3, -0.45, 0.77])
+            goal_obj_low = np.array([-0.3, -0.45,  self.table_z_offset])
             goal_obj_high = np.array([0.0, -0.3, 0.95])
         
         if self.init_qpos_type == 'upright': # right 기준
-            goal_obj_low = np.array([-0.15, -0.45, 0.77])
-            goal_obj_high = np.array([0.15, -0.3, 0.95])
+            # goal_obj_low = np.array([-0.25, -0.5,  self.table_z_offset])
+            # goal_obj_high = np.array([0.25, -0.3, 0.95])
+            goal_obj_low = np.array([-0.25, -0.45, self.table_z_offset])
+            goal_obj_high = np.array([0.25, -0.3, 0.95])
 
         self.goal_obj_pos_space = Box(low = goal_obj_low, high = goal_obj_high, dtype=np.float32)
         
@@ -1034,7 +1118,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                                 size=(self.goal_obj_pos_space.low.size),
                             )[:2]
                 # object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
-                object_pos = np.concatenate([object_xpos, np.array([0.75])], axis=-1)
+                object_pos = np.concatenate([object_xpos, np.array([self.table_z_offset])], axis=-1)
                 
                 ee_pos = self.get_endeff_pos(arm=self.which_hand)
                 
@@ -1044,7 +1128,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                                 self.goal_obj_pos_space.high,
                                 size=(self.goal_obj_pos_space.low.size),
                             )[:2]
-                    object_pos = np.concatenate([object_xpos, np.array([0.75])], axis=-1)
+                    object_pos = np.concatenate([object_xpos, np.array([self.table_z_offset])], axis=-1)
                 # print('In reset model, ee pos : {} obj pos : {}'.format(ee_pos, object_pos))
 
                 object_qpos = self.sim.data.get_joint_qpos('objjoint')
@@ -1056,7 +1140,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                 if debug_opt==1: # train fail
                     #일단은 obj 위치 고정하고 reach goal 랜덤 샘플
                     # fixed obj pos
-                    object_pos = np.array([0.0, -0.7, 0.75])
+                    object_pos = np.array([0.0, -0.7, self.table_z_offset])
                     object_qpos = self.sim.data.get_joint_qpos('objjoint')
                     assert object_qpos.shape == (7,)
                     object_qpos[:3] = object_pos
@@ -1070,7 +1154,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                                     size=(self.goal_obj_pos_space.low.size),
                                 )[:2]
                     # object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
-                    object_pos = np.concatenate([object_xpos, np.array([0.75])], axis=-1)
+                    object_pos = np.concatenate([object_xpos, np.array([self.table_z_offset])], axis=-1)
                     object_qpos = self.sim.data.get_joint_qpos('objjoint')
                     assert object_qpos.shape == (7,)
                     object_qpos[:3] = object_pos
@@ -1544,6 +1628,8 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
                 multigoal_rl = False,
                 multigoal_type = None,
                 sequential_rl = False,
+                weight_dim = None,
+                ee_offset_reward = False,
                 *args,
                 **kwargs
                 ):
@@ -1552,6 +1638,9 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
         self.multigoal_rl = multigoal_rl
         self.multigoal_type = multigoal_type
         self.sequential_rl = sequential_rl
+        self.weight_dim = weight_dim
+        self.ee_offset_reward = ee_offset_reward
+        self.ee_offset_threshold = 0.1
         self.goal_object_idx = 0
         self.goal_weight_is_set = False
         super().__init__(has_object=True,  block_gripper=False,  task='pickandplace', *args, **kwargs)
@@ -1601,10 +1690,10 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
             obj_velr = np.stack(object_velr_list, axis =0) #[num_obj, dim]
             obj_rel_pos = np.stack(object_rel_pos_list, axis =0) #[num_obj, dim]
 
-
-
-        else :
-            raise NotImplementedError            
+        if self.multigoal_rl or self.sequential_rl:
+            self.object_pos = obj_pos.copy()
+        if self.ee_offset_reward:
+            self.ee_pos = ee_pos.copy()
 
         if self.flat_gripper:                
             gripper_state = np.array([self.sim.data.get_joint_qpos(self.which_hand+'_gripper:r_gripper_finger_joint'),
@@ -1666,13 +1755,21 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
             if not self.has_object:
                 raise NotImplementedError()                
             else:
-                achieved_goal = obj_pos[self.goal_object_idx]
-            
+                if self.multigoal_rl:
+                    achieved_goal = obj_pos.ravel()
+                else:
+                    achieved_goal = obj_pos[self.goal_object_idx]                    
+        
+        if self.sequential_rl:
+            desired_goal = np.reshape(self._state_goal.copy(), (self.num_objects, -1)) #[num_obj, dim]
+            desired_goal = desired_goal[self.goal_object_idx]            
+        else:
+            desired_goal = self._state_goal.copy()
             
         return {
             'observation' : obs.copy(),
             'achieved_goal' : achieved_goal.copy(),
-            'desired_goal' : self._state_goal.copy(), 
+            'desired_goal' : desired_goal.copy(), 
         }    
 
     def reset_model(self):        
@@ -1688,23 +1785,54 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
         # randomly reset the initial position of an object
         if self.has_object:
             if self.task in ['pickandplace', 'push']:
-                x_min, y_min, z_min = self.goal_obj_pos_space.low
-                x_max, y_max, z_max = self.goal_obj_pos_space.high
-                # goal_obj_low = np.array([-0.15, -0.45, 0.77])
-                # goal_obj_high = np.array([0.15, -0.3, 0.95])
-                coords = generate_points_with_min_distance(n=self.num_objects, shape=(1,1), min_dist=0.05,\
-                     x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
-                np.random.shuffle(coords)
-                for i in range(self.num_objects):
-                    object_xpos = coords[i]
+                if self.sequential_rl: 
+                    x_min, y_min, z_min = self.goal_obj_pos_space.low
+                    x_max, y_max, z_max = self.goal_obj_pos_space.high                    
 
-                    object_pos = np.concatenate([object_xpos, np.array([0.75])], axis=-1)
-                    
-                    object_qpos = self.sim.data.get_joint_qpos('objjoint_'+str(i))
-                    assert object_qpos.shape == (7,)
-                    object_qpos[:3] = object_pos
-                    self.sim.data.set_joint_qpos('objjoint_'+str(i), object_qpos)
-            
+                    ver =2
+                    if ver==1:
+                        coords =  dscho_generate_points_with_min_distance(n=self.num_objects, min_dist=0.1, x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
+                    elif ver==2:                    
+                        coords =  dscho_generate_points_with_min_distance_ver2(n=self.num_objects, min_dist=0.1, x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
+                    elif ver==3:
+                        coords = generate_points_with_min_distance(n=self.num_objects, shape=(1,1), min_dist=0.05,\
+                            x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
+                        idx = np.argsort(coords[:, 0])[::-1] # x좌표 기준 내림차순
+                        coords = coords[idx]
+                        while not (coords[int(self.num_objects/2)-1, 0] >0 and coords[int(self.num_objects/2), 0] < 0): # should be half and half in x axis
+                            coords = generate_points_with_min_distance(n=self.num_objects, shape=(1,1), min_dist=0.05,\
+                                x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
+                            idx = np.argsort(coords[:, 0])[::-1] # x좌표 기준 내림차순
+                            coords = coords[idx]
+                    assert self.num_objects%2==0, 'should be even number for current code'
+                    np.random.shuffle(coords[:int(self.num_objects/2)]) # shuffle first half(right side)
+                    np.random.shuffle(coords[int(self.num_objects/2):]) # shuffle second half(left side)
+
+                    for i in range(self.num_objects):
+                        object_xpos = coords[i]
+                        object_pos = np.concatenate([object_xpos, np.array([self.table_z_offset])], axis=-1)                        
+                        object_qpos = self.sim.data.get_joint_qpos('objjoint_'+str(i))
+                        assert object_qpos.shape == (7,)
+                        object_qpos[:3] = object_pos
+                        self.sim.data.set_joint_qpos('objjoint_'+str(i), object_qpos)
+                else:
+                    x_min, y_min, z_min = self.goal_obj_pos_space.low
+                    x_max, y_max, z_max = self.goal_obj_pos_space.high
+                    # goal_obj_low = np.array([-0.15, -0.45, 0.77])
+                    # goal_obj_high = np.array([0.15, -0.3, 0.95])
+                    coords = generate_points_with_min_distance(n=self.num_objects, shape=(1,1), min_dist=0.05,\
+                        x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
+                    np.random.shuffle(coords)
+                    for i in range(self.num_objects):
+                        object_xpos = coords[i]
+
+                        object_pos = np.concatenate([object_xpos, np.array([self.table_z_offset])], axis=-1)
+                        
+                        object_qpos = self.sim.data.get_joint_qpos('objjoint_'+str(i))
+                        assert object_qpos.shape == (7,)
+                        object_qpos[:3] = object_pos
+                        self.sim.data.set_joint_qpos('objjoint_'+str(i), object_qpos)
+                
 
             else:
                 pass
@@ -1723,37 +1851,33 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
         # observation = super().reset_model() # init qpos,qvel set_state and get_obs
         
         info = {
-            'is_success': self._is_success(observation['achieved_goal'], self._state_goal),
+            # 'is_success': self._is_success(observation['achieved_goal'][:3], observation['desired_goal'][:3]),
             'right_ee_pos' : self.get_endeff_pos(arm='right'),
             'left_ee_pos' : self.get_endeff_pos(arm='left'),
-            # 'object_pos': self.get_obj_pos(name='obj'),
-            # 'object_qpos': self.get_obj_qpos(name='obj'),
-            # 'object_vel': self.get_obj_qvel(name='obj'),
-            # 'object_quat': self.get_obj_quat(name='obj'),
             'null_obj_val' : self._calculate_so3_error().copy(),
-            'l2_distance_to_goal' : np.linalg.norm(observation['desired_goal']-observation['achieved_goal'], ord=2, axis = -1), 
-            'l1_distance_to_goal' : np.linalg.norm(observation['desired_goal']-observation['achieved_goal'], ord=1, axis = -1),
-            'l2_distance_to_goal_of_interest' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=2, axis = -1), # diffrent from reward_dim 
-            'l1_distance_to_goal_of_interest' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=1, axis = -1),
+            # 'l2_distance_to_goal' : np.linalg.norm(observation['desired_goal']-observation['achieved_goal'], ord=2, axis = -1), 
+            # 'l1_distance_to_goal' : np.linalg.norm(observation['desired_goal']-observation['achieved_goal'], ord=1, axis = -1),
+            # 'l2_distance_to_goal_of_interest' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=2, axis = -1), # diffrent from reward_dim 
+            # 'l1_distance_to_goal_of_interest' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=1, axis = -1),
         }
-        if not self.full_state_goal:
-            info.update({'l2_distance_to_goal_for_reward' : info['l2_distance_to_goal'],
-                         'l1_distance_to_goal_for_reward' : info['l1_distance_to_goal']})
-        elif self.reward_by_ee:
-            info.update({'l2_distance_to_goal_for_reward' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=2, axis=-1),  
-                         'l1_distance_to_goal_for_reward' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=1, axis=-1),
-                         })
-        else:
-            info.update({'l2_distance_to_goal_for_reward' : np.linalg.norm(
-                np.concatenate([observation['desired_goal'][:self.obs_nqpos], observation['desired_goal'][-3:]], axis =-1)-
-                np.concatenate([observation['achieved_goal'][:self.obs_nqpos], observation['achieved_goal'][-3:]], axis =-1),
-                ord=2, axis = -1
-            ),
-            'l1_distance_to_goal_for_reward' : np.linalg.norm(
-                np.concatenate([observation['desired_goal'][:self.obs_nqpos], observation['desired_goal'][-3:]], axis =-1)-
-                np.concatenate([observation['achieved_goal'][:self.obs_nqpos], observation['achieved_goal'][-3:]], axis =-1),
-                ord=1, axis = -1
-            )})
+        # if not self.full_state_goal:
+        #     info.update({'l2_distance_to_goal_for_reward' : info['l2_distance_to_goal'],
+        #                  'l1_distance_to_goal_for_reward' : info['l1_distance_to_goal']})
+        # elif self.reward_by_ee:
+        #     info.update({'l2_distance_to_goal_for_reward' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=2, axis=-1),  
+        #                  'l1_distance_to_goal_for_reward' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=1, axis=-1),
+        #                  })
+        # else:
+        #     info.update({'l2_distance_to_goal_for_reward' : np.linalg.norm(
+        #         np.concatenate([observation['desired_goal'][:self.obs_nqpos], observation['desired_goal'][-3:]], axis =-1)-
+        #         np.concatenate([observation['achieved_goal'][:self.obs_nqpos], observation['achieved_goal'][-3:]], axis =-1),
+        #         ord=2, axis = -1
+        #     ),
+        #     'l1_distance_to_goal_for_reward' : np.linalg.norm(
+        #         np.concatenate([observation['desired_goal'][:self.obs_nqpos], observation['desired_goal'][-3:]], axis =-1)-
+        #         np.concatenate([observation['achieved_goal'][:self.obs_nqpos], observation['achieved_goal'][-3:]], axis =-1),
+        #         ord=1, axis = -1
+        #     )})
         self.info = copy.deepcopy(info)
 
         self._set_goal_marker(self._state_goal)
@@ -1772,6 +1896,52 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
                     size=(self.goal_ee_pos_space.low.size),
                 )
                 goal = goal_ee_pos
+            elif self.multigoal_rl or self.sequential_rl:
+                if self.multigoal_type=='arrange':
+                    
+                    x_min, y_min, z_min = self.goal_obj_pos_space.low
+                    x_max, y_max, z_max = self.goal_obj_pos_space.high
+                    # goal_obj_low = np.array([-0.15, -0.45, 0.77])
+                    # goal_obj_high = np.array([0.15, -0.3, 0.95])
+                    coords = generate_points_with_min_distance(n=self.num_objects, shape=(1,1), min_dist=0.1,\
+                        x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
+                    np.random.shuffle(coords)
+                    goal_list = []
+                    for i in range(self.num_objects):
+                        goal_list.append(np.array(list(coords[i])+ [self.table_z_offset]))
+                    goal = np.concatenate(goal_list, axis =0) # [num_obj*dim]
+                    
+                        
+                elif self.multigoal_type=='custom_arrange':
+                    
+                    goal_list = []
+                    # assert self.num_objects <=6
+                    # y_max = -0.25
+                    # y_min = -0.5
+                    # y_candidates = np.linspace(y_min, y_max, self.num_objects)
+                    # for i in range(self.num_objects):
+                    #     goal_list.append(np.array([0.0, y_candidates[i], 0.755]))
+                    # goal = np.concatenate(goal_list, axis =0) # [num_obj*dim]
+                    
+                    
+                    center_xy = np.array([0.0, -0.45])
+                    # theta = np.linspace(0, 2*np.pi, self.num_objects+1)[:-1]
+                    theta = np.linspace(-np.pi/4, 2*np.pi-np.pi/4, self.num_objects+1)[:-1]
+                    radius = 0.1                    
+                    for i in range(self.num_objects):
+                        goal_xy = center_xy + np.array([radius*np.cos(theta[i]), radius*np.sin(theta[i])])
+                        goal_list.append(np.concatenate([goal_xy, np.array([0.755])]))
+                    goal = np.concatenate(goal_list, axis =0) # [num_obj*dim]
+                    
+                elif self.multigoal_type=='stack':
+                    raise NotImplementedError('init grip pos should be defined')
+                    random_xyz_sample = self.initial_gripper_xpos[:3] + self.np_random.uniform(-self.target_range, self.target_range, size=3)
+                    goal_list = []
+                    for i in range(self.num_objects):
+                        goal_list.append(np.concatenate([random_xyz_sample[:2], np.array([self.height_offset+0.05*i])]))
+                    goal = np.concatenate(goal_list, axis =0) # [num_obj*dim]
+                    
+                    
             else: # pick and place, push, ...
                 
                 goal_obj_pos = np.random.uniform(
@@ -1813,10 +1983,250 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
 
 
     
+    def get_weight_for_multigoal_rl(self):
+        # obs_dict = self._get_obs()
+        # observation = obs_dict['observation']
         
+        object_pos = self.object_pos.copy()
+        if self.ee_offset_reward:
+            ee_pos = self.ee_pos.copy()
+        
+                
+        # Assume object_pos : [num_obj, dim]
+        desired_goal = self._state_goal.copy() #[num_obj*dim]
+        desired_goal = np.reshape(desired_goal, (self.num_objects, -1)) #[num_obj, dim]
+        
+        # 첫번째부터 순서대로 desired goal에 도달했는지 보고서 도달안한 obj 중 제일 앞순서대로 w 설정하게끔.
+        # 즉, Multi Goal HRL에서 w를 내뱉는 high level policy를 naive하게 대체하는 역할
+        weight = np.zeros(self.weight_dim)
+        for idx, obj_pos, goal in zip(range(self.num_objects), object_pos, desired_goal):
+            d = np.linalg.norm(obj_pos-goal, axis =-1)            
+            ee_offset = True if not self.ee_offset_reward else (ee_pos - obj_pos)[2] > self.ee_offset_threshold # z 방향 0.05이상 올라가면
 
+            if (d > self.distance_threshold) or (not ee_offset):
+                weight[idx] = 1.0
+                self.goal_object_idx = idx
+                break
+        if (weight==np.zeros(self.weight_dim)).all(): # all goals are achieved
+            weight = np.zeros(self.weight_dim)
+            # 그냥 일단은 마지막 object기준으로 남겨두기
+            idx = self.num_objects-1
+            weight[idx] = 1.0
+            self.goal_object_idx = idx
 
+        return weight
+        
+    def step(self, action):
+        if self.sequential_rl:
+            action = action.copy()
+            # debug 
+            # ee_pos = self.get_endeff_pos(arm=self.which_hand) # qpos idx찾아서 써야
+            # z_clip_pos = 0.76
+            # if ee_pos[2] <=z_clip_pos and action[2] < 0:
+            #     print('z action is clipped at z<={} for preventing table collision!'.format(z_clip_pos))
+            #     action[2] = 0.0
+                
 
+            # actions of remaning arm will be garbage
+            # gripper [-1,1] should be mod to
+            self._set_action(action) # 여기서 mocap target 설정. 즉 아래 for 문 도는동안 target은 변치 않음?
+
+            multi_step = 3# 10으로 하고 framse skip 10으로 하고, desired position에서 불변인지 check
+            for i in range(multi_step):
+                self.sim.step()
+            
+            self.curr_path_length +=1
+
+            observation = self._get_obs()
+            done = False
+            '''
+            # NOTE : Only difference with single object env
+            '''
+            
+            # desired_goal = self._state_goal.copy() #[num_obj*dim]
+            # desired_goal = np.reshape(desired_goal, (self.num_objects, -1)) #[num_obj, dim]
+            info = {
+                # 'is_success': self._is_success(observation['achieved_goal'], desired_goal[self.goal_object_idx]),
+                'right_ee_pos' : self.get_endeff_pos(arm='right'),
+                'left_ee_pos' : self.get_endeff_pos(arm='left'),
+                'null_obj_val' : self._calculate_so3_error().copy(),
+                # 'l2_distance_to_goal' : np.linalg.norm(observation['desired_goal']-observation['achieved_goal'], ord=2, axis = -1), 
+                # 'l1_distance_to_goal' : np.linalg.norm(observation['desired_goal']-observation['achieved_goal'], ord=1, axis = -1),
+                # 'l2_distance_to_goal_of_interest' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=2, axis = -1), # diffrent from reward_dim 
+                # 'l1_distance_to_goal_of_interest' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=1, axis = -1),
+            }
+            # if not self.full_state_goal:
+            #     info.update({'l2_distance_to_goal_for_reward' : info['l2_distance_to_goal'],
+            #                 'l1_distance_to_goal_for_reward' : info['l1_distance_to_goal']})
+            # elif self.reward_by_ee:
+            #     info.update({'l2_distance_to_goal_for_reward' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=2, axis=-1),  
+            #                 'l1_distance_to_goal_for_reward' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=1, axis=-1),
+            #                 })
+            # else:
+            #     info.update({'l2_distance_to_goal_for_reward' : np.linalg.norm(
+            #         np.concatenate([observation['desired_goal'][:self.obs_nqpos], observation['desired_goal'][-3:]], axis =-1)-
+            #         np.concatenate([observation['achieved_goal'][:self.obs_nqpos], observation['achieved_goal'][-3:]], axis =-1),
+            #         ord=2, axis = -1
+            #     ),
+            #     'l1_distance_to_goal_for_reward' : np.linalg.norm(
+            #         np.concatenate([observation['desired_goal'][:self.obs_nqpos], observation['desired_goal'][-3:]], axis =-1)-
+            #         np.concatenate([observation['achieved_goal'][:self.obs_nqpos], observation['achieved_goal'][-3:]], axis =-1),
+            #         ord=1, axis = -1
+            #     )})
+            self.info = copy.deepcopy(info)
+            reward = self.compute_reward(observation['achieved_goal'], observation['desired_goal'], info)
+        
+            # process to make remaing arm not to move
+            qpos = self.data.qpos.flat.copy()
+            qvel = self.data.qvel.flat.copy()        
+            if self.which_hand =='right':
+                #left arm's qpos,qvel index
+                start_p, end_p = self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos, 2*self.ur3_nqpos+2*self.gripper_nqpos+2*self.flat_gripper_nqpos
+                start_v, end_v = self.ur3_nqvel+self.gripper_nqvel+self.flat_gripper_nqvel, 2*self.ur3_nqvel+2*self.gripper_nqvel+2*self.flat_gripper_nqvel
+                qpos[start_p:end_p] = self.left_get_away_qpos
+                qvel[start_v:end_v] = np.zeros(end_v-start_v)
+            elif self.which_hand=='left':
+                #right arm's qpos,qvel index
+                start_p, end_p = 0, self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos
+                start_v, end_v = 0, self.ur3_nqvel+self.gripper_nqvel+self.flat_gripper_nqvel
+                qpos[start_p:end_p] = self.right_get_away_qpos
+                qvel[start_v:end_v] = np.zeros(end_v-start_v)
+            
+            self.set_state(qpos, qvel)
+            # set state하면 site pos도 다 초기화됨! #TODO: 이 부분은 wrapper에 있을 함수가 아님!
+            self._set_goal_marker(self._state_goal)
+            # self._set_subgoal_marker(self._state_subgoals)
+            # self._set_finalgoal_marker(self._state_finalgoal)
+            # print('env state goal : {}'.format(self.env._state_goal))
+            
+            #TODO: Should consider how to address done
+            # done = True if info['is_success'] else False
+            
+            return observation, reward, done, info
+        elif self.multigoal_rl:
+            action = action.copy()
+            # actions of remaning arm will be garbage
+            # gripper [-1,1] should be mod to
+            self._set_action(action) # 여기서 mocap target 설정. 즉 아래 for 문 도는동안 target은 변치 않음?
+
+            multi_step = 3# 10으로 하고 framse skip 10으로 하고, desired position에서 불변인지 check
+            for i in range(multi_step):
+                self.sim.step()
+            
+            self.curr_path_length +=1
+
+            observation = self._get_obs()
+            done = False
+            '''
+            # NOTE : Only difference with single object env
+            '''
+            desired_goal = self._state_goal.copy() #[num_obj*dim]
+            desired_goal = np.reshape(desired_goal, (self.num_objects, -1)) #[num_obj, dim]
+            achieved_goal = np.reshape(observation['achieved_goal'].copy(), (self.num_objects, -1)) #[num_obj, dim]
+            weight = np.zeros(self.weight_dim)
+            weight[self.goal_object_idx] = 1.0
+            info = {
+                'weight' : weight,
+                'is_success': self._is_success(achieved_goal[self.goal_object_idx], desired_goal[self.goal_object_idx]),
+                'right_ee_pos' : self.get_endeff_pos(arm='right'),
+                'left_ee_pos' : self.get_endeff_pos(arm='left'),
+                'null_obj_val' : self._calculate_so3_error().copy(),
+                # 'l2_distance_to_goal' : np.linalg.norm(observation['desired_goal']-observation['achieved_goal'], ord=2, axis = -1), 
+                # 'l1_distance_to_goal' : np.linalg.norm(observation['desired_goal']-observation['achieved_goal'], ord=1, axis = -1),
+                # 'l2_distance_to_goal_of_interest' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=2, axis = -1), # diffrent from reward_dim 
+                # 'l1_distance_to_goal_of_interest' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=1, axis = -1),
+            }
+            # if not self.full_state_goal:
+            #     info.update({'l2_distance_to_goal_for_reward' : info['l2_distance_to_goal'],
+            #                 'l1_distance_to_goal_for_reward' : info['l1_distance_to_goal']})
+            # elif self.reward_by_ee:
+            #     info.update({'l2_distance_to_goal_for_reward' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=2, axis=-1),  
+            #                 'l1_distance_to_goal_for_reward' : np.linalg.norm(observation['desired_goal'][-3:]-observation['achieved_goal'][-3:], ord=1, axis=-1),
+            #                 })
+            # else:
+            #     info.update({'l2_distance_to_goal_for_reward' : np.linalg.norm(
+            #         np.concatenate([observation['desired_goal'][:self.obs_nqpos], observation['desired_goal'][-3:]], axis =-1)-
+            #         np.concatenate([observation['achieved_goal'][:self.obs_nqpos], observation['achieved_goal'][-3:]], axis =-1),
+            #         ord=2, axis = -1
+            #     ),
+            #     'l1_distance_to_goal_for_reward' : np.linalg.norm(
+            #         np.concatenate([observation['desired_goal'][:self.obs_nqpos], observation['desired_goal'][-3:]], axis =-1)-
+            #         np.concatenate([observation['achieved_goal'][:self.obs_nqpos], observation['achieved_goal'][-3:]], axis =-1),
+            #         ord=1, axis = -1
+            #     )})
+            self.info = copy.deepcopy(info)
+            reward = self.compute_reward(achieved_goal[self.goal_object_idx], desired_goal[self.goal_object_idx], info)
+        
+            # process to make remaing arm not to move
+            qpos = self.data.qpos.flat.copy()
+            qvel = self.data.qvel.flat.copy()        
+            if self.which_hand =='right':
+                #left arm's qpos,qvel index
+                start_p, end_p = self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos, 2*self.ur3_nqpos+2*self.gripper_nqpos+2*self.flat_gripper_nqpos
+                start_v, end_v = self.ur3_nqvel+self.gripper_nqvel+self.flat_gripper_nqvel, 2*self.ur3_nqvel+2*self.gripper_nqvel+2*self.flat_gripper_nqvel
+                qpos[start_p:end_p] = self.left_get_away_qpos
+                qvel[start_v:end_v] = np.zeros(end_v-start_v)
+            elif self.which_hand=='left':
+                #right arm's qpos,qvel index
+                start_p, end_p = 0, self.ur3_nqpos+self.gripper_nqpos+self.flat_gripper_nqpos
+                start_v, end_v = 0, self.ur3_nqvel+self.gripper_nqvel+self.flat_gripper_nqvel
+                qpos[start_p:end_p] = self.right_get_away_qpos
+                qvel[start_v:end_v] = np.zeros(end_v-start_v)
+            
+            self.set_state(qpos, qvel)
+            # set state하면 site pos도 다 초기화됨! #TODO: 이 부분은 wrapper에 있을 함수가 아님!
+            self._set_goal_marker(self._state_goal)
+            # self._set_subgoal_marker(self._state_subgoals)
+            # self._set_finalgoal_marker(self._state_finalgoal)
+            # print('env state goal : {}'.format(self.env._state_goal))
+            
+            #TODO: Should consider how to address done
+            # done = True if info['is_success'] else False
+            
+            return observation, reward, done, info
+        else:
+            return super(DSCHOSingleUR3PickAndPlaceMultiObjectEnv, self).step(action)
+        
+    def _set_goal_marker(self, goal):
+        """
+        This should be use ONLY for visualization. Use self._state_goal for
+        logging, learning, etc.
+        """
+
+        if self.sequential_rl or self.multigoal_rl:
+            goal = np.reshape(goal.copy(), (self.num_objects, -1)) #[num_obj, dim]
+            for i in range(self.num_objects):
+                if i==0:
+                    self.data.site_xpos[self.model.site_name2id('goal')] = (
+                        goal[i]
+                    )
+                else:
+                    self.data.site_xpos[self.model.site_name2id('goal_'+str(i))] = (
+                        goal[i]
+                    )
+        
+        else:
+            self.data.site_xpos[self.model.site_name2id('goal')] = (
+                goal[-3:]
+            )
+    def compute_reward(self, achieved_goal, desired_goal, info):
+        if self.ee_offset_reward:
+            ee_pos = info[self.which_hand+'_ee_pos']
+            placingDist = np.linalg.norm(achieved_goal-desired_goal, axis =-1)
+            ee_offset = (ee_pos - desired_goal)[2] > self.ee_offset_threshold
+            if self.sparse_reward : 
+                if (placingDist < self.distance_threshold) and ee_offset:
+                    reward = 0.0
+                else :
+                    reward = -1.0
+            else :
+                raise NotImplementedError
+                
+
+            return reward
+
+        else:
+            super(DSCHOSingleUR3PickAndPlaceMultiObjectEnv, self).compute_reward(achieved_goal, desired_goal, info)
 
 class DSCHOSingleUR3PickAndPlaceEnv(DSCHOSingleUR3GoalMocapEnv):
     def __init__(self, *args, **kwargs):

@@ -3325,8 +3325,8 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     gripper_action = True
     
     #env_id = 'dscho-single-ur3-mocap-pickandplace-v1'
-    # env_id = 'dscho-single-ur3-mocap-pickandplace-multiobject-v1'
-    env_id = 'dscho-single-ur3-mocap-door-v1'
+    env_id = 'dscho-single-ur3-mocap-pickandplace-multiobject-v1'
+    # env_id = 'dscho-single-ur3-mocap-door-v1'
     # env_id = 'dscho-single-ur3-mocap-button-v1'
     # env_id = 'dscho-single-ur3-mocap-drawer-v1'
     # env_id = 'dscho-single-ur3-mocap-reach-v1'
@@ -3335,10 +3335,10 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     from gym_custom.envs.custom.dscho_dual_ur3_goal_mocap_env_without_obstacle import DSCHOSingleUR3PickAndPlaceEnv, MocapSingleWrapper
     
     upright_ver = True
-    multi_objects = False
+    multi_objects = True
     if multi_objects:
         assert upright_ver
-        num_objects = 6
+        num_objects = 4
         xml_filename= 'dscho_dual_ur3_upright_mocap_'+str(num_objects)+'object_flat_gripper.xml'
         env_kwargs= dict(initMode = None, 
                         sparse_reward = True, 
@@ -3351,6 +3351,9 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
                         custom_frame_skip = 10, # 0.005 * 10 =0.05s per step
                         num_objects=num_objects,
                         )
+        sequential_rl = True
+        if sequential_rl:
+            env_kwargs.update(dict(sequential_rl = True, multigoal_type='arrange', weight_dim = 8))
     else:
         if 'door' in env_id:
             env_kwargs = dict(xml_filename= 'dscho_dual_ur3_upright_mocap_door_flat_gripper_ver2.xml' if upright_ver else None,
@@ -3401,9 +3404,11 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     print('dt : ', dt)
     print('Mocap env는 어처피 한 스텝안에 그만큼 움직이기만 하면 되는거라 굳이 dt가 의미없음. 즉 action scale이 커도 실제 움직일떄 긴 타임스텝동안 움직이면 되니까 문제 x!')
     if multi_objects:
-        weight = np.array([0,1,0,0], dtype=np.float32)
-        env.set_goal_weight(weight) 
-        
+        # weight = np.array([0,1,0,0], dtype=np.float32)
+        # env.set_goal_weight(weight) 
+        if sequential_rl:
+            weight = env.get_weight_for_multigoal_rl()
+
         indices =[]
         num_elements = [3, 3*num_objects, 3*num_objects, 2, 3*num_objects, 3*num_objects, 3*num_objects, 3, 2]
         elements_sum = 0
@@ -3423,14 +3428,15 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     else:
         grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
     print('g pos : {} o pos : {} o relpos : {} g state : {} o rot : {} o velp : {} o velr : {} g velp : {} g vel : {}'.format(grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel))
-    
+    print('goal : ', env.get_current_goal())
     # env.render()
     # time.sleep(2)
     # for i in range(1):
     #     env.step(np.array([0,0,0,0]))
-    # while True:
-    #     env.render()
-    # sys.exit()
+    while True:        
+        env.render()
+        # env.step(env.action_space.sample())
+    sys.exit()
     # for i in range(100):
     #     env.render()
     #     env.step(np.array([0.0, 0, 0, 1.0]))
