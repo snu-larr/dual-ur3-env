@@ -2,6 +2,8 @@ import copy
 import numpy as np
 import os
 import warnings
+
+from numpy.lib.function_base import meshgrid
 import gym_custom
 from gym_custom.spaces import Box
 from gym_custom import utils
@@ -92,7 +94,7 @@ def dscho_generate_points_with_min_distance_ver2(n, min_dist, x_min, x_max, y_mi
     # left half, right half    
 
     # right half
-    coords = np.random.uniform(np.array([0, y_min]), np.array([x_max, y_max]), size = [int(n/2), 2])
+    coords = np.random.uniform(np.array([0.05, y_min]), np.array([x_max, y_max]), size = [int(n/2), 2])
     if int(n/2) < 2:
         pass
     else:
@@ -105,7 +107,7 @@ def dscho_generate_points_with_min_distance_ver2(n, min_dist, x_min, x_max, y_mi
         # nC2 개
         distances = np.stack(dist_list, axis=0)
         while (distances < min_dist).any():
-            coords = np.random.uniform(np.array([0, y_min]), np.array([x_max, y_max]), size = [int(n/2),2])
+            coords = np.random.uniform(np.array([0.05, y_min]), np.array([x_max, y_max]), size = [int(n/2),2])
             coords_temp = coords.copy()
             dist_list = []
             for i, xy in enumerate(coords):            
@@ -118,7 +120,7 @@ def dscho_generate_points_with_min_distance_ver2(n, min_dist, x_min, x_max, y_mi
     right_coords = coords.copy()
 
     # left half
-    coords = np.random.uniform(np.array([x_min, y_min]), np.array([0, y_max]), size = [int(n/2), 2])
+    coords = np.random.uniform(np.array([x_min, y_min]), np.array([-0.05, y_max]), size = [int(n/2), 2])
     if int(n/2) < 2:
         pass
     else:
@@ -131,7 +133,7 @@ def dscho_generate_points_with_min_distance_ver2(n, min_dist, x_min, x_max, y_mi
         # nC2 개
         distances = np.stack(dist_list, axis=0)
         while (distances < min_dist).any():
-            coords = np.random.uniform(np.array([x_min, y_min]), np.array([0, y_max]), size = [int(n/2),2])
+            coords = np.random.uniform(np.array([x_min, y_min]), np.array([-0.05, y_max]), size = [int(n/2),2])
             coords_temp = coords.copy()
             dist_list = []
             for i, xy in enumerate(coords):            
@@ -144,6 +146,84 @@ def dscho_generate_points_with_min_distance_ver2(n, min_dist, x_min, x_max, y_mi
     left_coords = coords.copy()
 
     return np.concatenate([right_coords, left_coords], axis =0)
+
+def dscho_generate_points_with_min_distance_ver3(n, x_min, x_max, y_min, y_max):
+    # left half, right half & fixed order 대칭
+    if n ==2 :
+        right_coords = np.random.uniform(np.array([0.1, y_min]), np.array([x_max, y_max]))
+        left_coords = np.array([-right_coords[0], right_coords[1]])
+        return np.stack([right_coords, left_coords], axis =0)
+    elif n==4:
+        '''
+        o_4 g_3 g_2 o_1
+        o_3 g_4 g_1 o_2
+        '''
+        right_center = np.array([0.2+np.random.uniform(-0.03,0.03), (y_max+y_min)/2])
+        right_coords = right_center + np.array([[0, 0.07],[0, -0.07]])
+        left_center = np.array([-0.2+np.random.uniform(-0.03,0.03), (y_max+y_min)/2])
+        left_coords = left_center + np.array([[0, -0.07],[0, 0.07]])
+        return np.concatenate([right_coords, left_coords], axis =0)
+        
+    elif n==6:
+        # '''
+        # o_5 g_4 g_3 o_1
+        # o_6 g_5 g_2 o_3
+        # o_4 g_6 g_1 o_2
+        # '''
+        # right_center = np.array([0.2+np.random.uniform(-0.03,0.03), (y_max+y_min)/2])
+        # right_coords = right_center + np.array([[0, 0.09],[0, -0.13], [0, -0.015]])
+        # left_center = np.array([-0.2+np.random.uniform(-0.03,0.03), (y_max+y_min)/2])
+        # left_coords = left_center + np.array([[0, -0.13],[0, 0.09], [0, -0.015]])
+        # return np.concatenate([right_coords, left_coords], axis =0)
+        '''
+        o_5 g_4 g_3 o_1
+    o_6     g_5 g_2     o_3
+        o_4 g_6 g_1 o_2
+        '''
+        right_center = np.array([0.2+np.random.uniform(-0.03,0.03), (y_max+y_min)/2])
+        right_coords = right_center + np.array([[0, 0.09],[0, -0.13], [0.05, -0.015]])
+        left_center = np.array([-0.2+np.random.uniform(-0.03,0.03), (y_max+y_min)/2])
+        left_coords = left_center + np.array([[0, -0.13],[0, 0.09], [-0.05, -0.015]])
+        return np.concatenate([right_coords, left_coords], axis =0)
+    elif n==8:
+        # '''
+        #         g_5 g_4 
+        # o_7 o_6 g_6 g_3 o_1 o_4
+        # o_8 o_5 g_7 g_2 o_2 o_3
+        #         g_8 g_1 
+        # '''
+        # right_center_1 = np.array([0.16+np.random.uniform(-0.03,0.03), (y_max+y_min)/2])
+        # right_center_2 = right_center_1 + np.array([0.07, 0])
+        # right_coords_1 = right_center_1 + np.array([[0, 0.07],[0, -0.07]])
+        # right_coords_2 = (right_coords_1 + np.array([0.07, 0]))[::-1] # reverse order
+
+        # left_center_1 = np.array([-0.16+np.random.uniform(-0.03,0.03), (y_max+y_min)/2])
+        # left_center_2 = left_center_1 + np.array([-0.07, 0])
+        # left_coords_1 = left_center_1 + np.array([[0, -0.07],[0, 0.07]])
+        # left_coords_2 = (left_coords_1 + np.array([-0.07, 0]))[::-1] # reverse order
+
+        '''
+        o_7 o_5 g_8 g_6 g_2 g_4 o_1 o_3
+        o_8 o_6 g_7 g_5 g_1 g_3 o_2 o_4
+        '''
+        right_center_1 = np.array([0.16+np.random.uniform(-0.02,0.02), -0.4])
+        # right_center_2 = right_center_1 + np.array([0.09, 0])
+        right_coords_1 = right_center_1 + np.array([[0, 0.1],[0, -0.1]])
+        right_coords_2 = (right_coords_1 + np.array([0.09, 0]))
+
+        left_center_1 = np.array([-0.16+np.random.uniform(-0.02,0.02), -0.4])
+        # left_center_2 = left_center_1 + np.array([-0.07, 0])
+        left_coords_1 = left_center_1 + np.array([[0, 0.1],[0, -0.1]])
+        left_coords_2 = (left_coords_1 + np.array([-0.09, 0]))
+
+        '''
+                    g_8 g_3
+        o_7 o_5 g_8 g_6 g_2 g_4 o_1 o_3
+        o_8 o_6     g_5 g_1     o_2 o_4
+        '''
+
+        return np.concatenate([right_coords_1, right_coords_2, left_coords_1, left_coords_2], axis =0)
+
 
 class DummyWrapper():
     
@@ -990,8 +1070,8 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         if self.init_qpos_type == 'upright': # right 기준
             # goal_obj_low = np.array([-0.25, -0.5,  self.table_z_offset])
             # goal_obj_high = np.array([0.25, -0.3, 0.95])
-            goal_obj_low = np.array([-0.25, -0.45, self.table_z_offset])
-            goal_obj_high = np.array([0.25, -0.3, 0.95])
+            goal_obj_low = np.array([-0.25, -0.52, self.table_z_offset])
+            goal_obj_high = np.array([0.25, -0.28, 0.95])
 
         self.goal_obj_pos_space = Box(low = goal_obj_low, high = goal_obj_high, dtype=np.float32)
         
@@ -1789,12 +1869,17 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
                     x_min, y_min, z_min = self.goal_obj_pos_space.low
                     x_max, y_max, z_max = self.goal_obj_pos_space.high                    
 
-                    ver =2
+                    ver =3
+                    print('Currently use ver3 reset objects!')
                     if ver==1:
-                        coords =  dscho_generate_points_with_min_distance(n=self.num_objects, min_dist=0.1, x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
+                        coords =  dscho_generate_points_with_min_distance(n=self.num_objects, min_dist=0.1, x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)                        
                     elif ver==2:                    
                         coords =  dscho_generate_points_with_min_distance_ver2(n=self.num_objects, min_dist=0.1, x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
+                        np.random.shuffle(coords[:int(self.num_objects/2)]) # shuffle first half(right side)
+                        np.random.shuffle(coords[int(self.num_objects/2):]) # shuffle second half(left side)
                     elif ver==3:
+                        coords =  dscho_generate_points_with_min_distance_ver3(n=self.num_objects, x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
+                    elif ver==4:
                         coords = generate_points_with_min_distance(n=self.num_objects, shape=(1,1), min_dist=0.05,\
                             x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
                         idx = np.argsort(coords[:, 0])[::-1] # x좌표 기준 내림차순
@@ -1804,9 +1889,10 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
                                 x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
                             idx = np.argsort(coords[:, 0])[::-1] # x좌표 기준 내림차순
                             coords = coords[idx]
+                        np.random.shuffle(coords[:int(self.num_objects/2)]) # shuffle first half(right side)
+                        np.random.shuffle(coords[int(self.num_objects/2):]) # shuffle second half(left side)
                     assert self.num_objects%2==0, 'should be even number for current code'
-                    np.random.shuffle(coords[:int(self.num_objects/2)]) # shuffle first half(right side)
-                    np.random.shuffle(coords[int(self.num_objects/2):]) # shuffle second half(left side)
+                    
 
                     for i in range(self.num_objects):
                         object_xpos = coords[i]
@@ -1923,16 +2009,69 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
                     #     goal_list.append(np.array([0.0, y_candidates[i], 0.755]))
                     # goal = np.concatenate(goal_list, axis =0) # [num_obj*dim]
                     
-                    
-                    center_xy = np.array([0.0, -0.45])
-                    # theta = np.linspace(0, 2*np.pi, self.num_objects+1)[:-1]
-                    theta = np.linspace(-np.pi/4, 2*np.pi-np.pi/4, self.num_objects+1)[:-1]
-                    radius = 0.1                    
-                    for i in range(self.num_objects):
-                        goal_xy = center_xy + np.array([radius*np.cos(theta[i]), radius*np.sin(theta[i])])
-                        goal_list.append(np.concatenate([goal_xy, np.array([0.755])]))
-                    goal = np.concatenate(goal_list, axis =0) # [num_obj*dim]
-                    
+                    if self.num_objects<=4:
+                        center_xy = np.array([0.0, -0.45])
+                        # theta = np.linspace(0, 2*np.pi, self.num_objects+1)[:-1]
+                        theta = np.linspace(-np.pi/4, 2*np.pi-np.pi/4, self.num_objects+1)[:-1]
+                        radius = 0.1                    
+                        for i in range(self.num_objects):
+                            goal_xy = center_xy + np.array([radius*np.cos(theta[i]), radius*np.sin(theta[i])])
+                            goal_list.append(np.concatenate([goal_xy, np.array([self.table_z_offset])]))
+                        goal = np.concatenate(goal_list, axis =0) # [num_obj*dim]
+                    elif self.num_objects==6:
+                        # '''
+                        # o_5 g_4 g_3 o_1
+                        # o_6 g_5 g_2 o_3
+                        # o_4 g_6 g_1 o_2
+                        # '''
+                        '''
+                        o_5 g_4 g_3 o_1
+                    o_6     g_5 g_2     o_3
+                        o_4 g_6 g_1 o_2
+                        '''
+                        right_center = np.array([0.07, -0.4])
+                        right_goal = right_center + np.array([[0, -0.13], [0, -0.01], [0, 0.11]]) #[3,2]
+                        left_center = np.array([-0.07, -0.4])
+                        left_goal = left_center + np.array([[0, 0.11], [0, -0.01], [0, -0.13]]) #[3,2]
+                        goal_xy = np.concatenate([right_goal, left_goal], axis =0) # [num_obj, 2dim]
+                        goal_list = []
+                        for g in goal_xy:
+                            goal_list.append(np.concatenate([g, np.array([self.table_z_offset])])) # list of [dim]
+                        goal = np.concatenate(goal_list, axis =0) #[num_obj*dim]
+
+                    elif self.num_objects==8:
+                        # '''
+                        #         g_5 g_4 
+                        # o_7 o_6 g_6 g_3 o_1 o_4
+                        # o_8 o_5 g_7 g_2 o_2 o_3
+                        #         g_8 g_1 
+                        # '''
+                        # right_center = np.array([0.07, -0.4])
+                        # right_goal = right_center + np.array([[0, -0.15], [0, -0.06], [0, 0.03], [0, 0.12]]) #[4,2]
+                        # left_center = np.array([-0.07, -0.4])
+                        # left_goal = left_center + np.array([[0, 0.12], [0, 0.03], [0, -0.06], [0, -0.15]]) #[4,2]
+                        # goal_xy = np.concatenate([right_goal, left_goal], axis =0) # [num_obj, 2dim]
+                        # goal_list = []
+                        # for g in goal_xy:
+                        #     goal_list.append(np.concatenate([g, np.array([self.table_z_offset])])) # list of [dim]
+                        # goal = np.concatenate(goal_list, axis =0) #[num_obj*dim]
+                        '''
+                        o_7 o_5 g_8 g_6 g_2 g_4 o_1 o_3
+                        o_8 o_6 g_7 g_5 g_1 g_3 o_2 o_4
+                        '''
+                        right_center_1 = np.array([0.04, -0.4])
+                        right_goal_1 = right_center_1 + np.array([[0, -0.1], [0, 0.1]]) #[2,2]
+                        right_goal_2 = right_goal_1 + np.array([0.09, 0]) #[2,2]
+                        
+                        left_center_1 = np.array([-0.04, -0.4])
+                        left_goal_1 = left_center_1 + np.array([[0, -0.1], [0, 0.1]]) #[2,2]
+                        left_goal_2 = left_goal_1 + np.array([-0.09, 0]) #[2,2]
+                        
+                        goal_xy = np.concatenate([right_goal_1, right_goal_2,left_goal_1, left_goal_2], axis =0) # [num_obj, 2dim]
+                        goal_list = []
+                        for g in goal_xy:
+                            goal_list.append(np.concatenate([g, np.array([self.table_z_offset])])) # list of [dim]
+                        goal = np.concatenate(goal_list, axis =0) #[num_obj*dim]
                 elif self.multigoal_type=='stack':
                     raise NotImplementedError('init grip pos should be defined')
                     random_xyz_sample = self.initial_gripper_xpos[:3] + self.np_random.uniform(-self.target_range, self.target_range, size=3)
@@ -2024,7 +2163,7 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
             action = action.copy()
             # debug 
             # ee_pos = self.get_endeff_pos(arm=self.which_hand) # qpos idx찾아서 써야
-            # z_clip_pos = 0.76
+            # z_clip_pos = 0.77
             # if ee_pos[2] <=z_clip_pos and action[2] < 0:
             #     print('z action is clipped at z<={} for preventing table collision!'.format(z_clip_pos))
             #     action[2] = 0.0
@@ -2231,7 +2370,7 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
             return reward
 
         else:
-            super(DSCHOSingleUR3PickAndPlaceMultiObjectEnv, self).compute_reward(achieved_goal, desired_goal, info)
+            return super(DSCHOSingleUR3PickAndPlaceMultiObjectEnv, self).compute_reward(achieved_goal, desired_goal, info)
 
 class DSCHOSingleUR3PickAndPlaceEnv(DSCHOSingleUR3GoalMocapEnv):
     def __init__(self, *args, **kwargs):
