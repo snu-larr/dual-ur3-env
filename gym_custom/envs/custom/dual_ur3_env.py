@@ -29,7 +29,7 @@ object_xmls = ['dscho_dual_ur3_object.xml', 'dscho_dual_ur3_object_flat_gripper.
 multi_task_xmls = ['dscho_dual_ur3_upright_mocap_door_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_button_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_drawer_flat_gripper.xml', \
      'dscho_dual_ur3_upright_mocap_drawer_flat_gripper_ver2.xml', 'dscho_dual_ur3_upright_mocap_door_flat_gripper_ver2.xml']
 
-multi_object_xmls = ['dscho_dual_ur3_upright_mocap_2object_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_4object_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_6object_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_8object_flat_gripper.xml']
+multi_object_xmls = ['dscho_dual_ur3_upright_mocap_1object_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_2object_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_4object_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_6object_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_8object_flat_gripper.xml']
 
 class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
 

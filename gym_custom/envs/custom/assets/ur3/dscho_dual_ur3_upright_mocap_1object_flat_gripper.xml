@@ -25,16 +25,7 @@
          <!-- Prevent collision between Robotiq Gripper & Object  -->
         <exclude body1="right_ee_link" body2="obj_0"></exclude>
         <exclude body1="left_ee_link" body2="obj_0"></exclude>
-        <exclude body1="right_ee_link" body2="obj_1"></exclude>
-        <exclude body1="left_ee_link" body2="obj_1"></exclude>
-        <exclude body1="right_ee_link" body2="obj_2"></exclude>
-        <exclude body1="left_ee_link" body2="obj_2"></exclude>
-        <exclude body1="right_ee_link" body2="obj_3"></exclude>
-        <exclude body1="left_ee_link" body2="obj_3"></exclude>
-        <exclude body1="right_ee_link" body2="obj_4"></exclude>
-        <exclude body1="left_ee_link" body2="obj_4"></exclude>
-        <exclude body1="right_ee_link" body2="obj_5"></exclude>
-        <exclude body1="left_ee_link" body2="obj_5"></exclude>
+
     </contact>
 
     <default>
@@ -179,39 +170,11 @@
             <site name="obj:qcZ" type="box" pos="0.0 0.0 0.05" size="0.05 0.002 0.002"  quat = "-0.707107 0.0 0.707107 0."     rgba="0 0 1 1" /-->
 		</body>
 
-        <body name="obj_1" pos="0.15 -0.4 0.77">			
-            <joint name="objjoint_1" type="free" damping="0.01"></joint>            
-            <geom size="0.025 0.025 0.025" type="box" condim="3" name="objGeom_1" material="block_mat" mass="2"  rgba="1 0 0 1"></geom>
-			<site name="objSite_1" pos="0 0 0" size="0.01 0.01 0.01" rgba="1 0 0 1" type="sphere"></site>
-		</body>
-        <body name="obj_2" pos="0.2 -0.4 0.77">			
-            <joint name="objjoint_2" type="free" damping="0.01"></joint>            
-            <geom size="0.025 0.025 0.025" type="box" condim="3" name="objGeom_2" material="block_mat" mass="2"  rgba="0 1 0 1"></geom>
-			<site name="objSite_2" pos="0 0 0" size="0.01 0.01 0.01" rgba="1 0 0 1" type="sphere"></site>
-		</body>
-        <body name="obj_3" pos="0.25 -0.4 0.77">			
-            <joint name="objjoint_3" type="free" damping="0.01"></joint>            
-            <geom size="0.025 0.025 0.025" type="box" condim="3" name="objGeom_3" material="block_mat" mass="2"  rgba="0 0 1 1"></geom>
-			<site name="objSite_3" pos="0 0 0" size="0.01 0.01 0.01" rgba="1 0 0 1" type="sphere"></site>
-		</body>
-        <body name="obj_4" pos="0.3 -0.4 0.77">			
-            <joint name="objjoint_4" type="free" damping="0.01"></joint>            
-            <geom size="0.025 0.025 0.025" type="box" condim="3" name="objGeom_4" material="block_mat" mass="2"  rgba="1 1 0 1"></geom>
-			<site name="objSite_4" pos="0 0 0" size="0.01 0.01 0.01" rgba="1 0 0 1" type="sphere"></site>
-		</body>
-        <body name="obj_5" pos="0.1 -0.5 0.77">			
-            <joint name="objjoint_5" type="free" damping="0.01"></joint>            
-            <geom size="0.025 0.025 0.025" type="box" condim="3" name="objGeom_5" material="block_mat" mass="2"  rgba="1 0 1 1"></geom>
-			<site name="objSite_5" pos="0 0 0" size="0.01 0.01 0.01" rgba="1 0 0 1" type="sphere"></site>
-		</body>
+        
 
 
         <site name="goal" pos="0.0 -0.27 0.92" size="0.01" rgba="0 0 0 1"/>
         <site name="goal_1" pos="0 0 0 " size="0.01" rgba="1 0 0 1"/>
-        <site name="goal_2" pos="0 0 0 " size="0.01" rgba="0 1 0 1"/>
-        <site name="goal_3" pos="0 0 0 " size="0.01" rgba="0 0 1 1"/>
-        <site name="goal_4" pos="0 0 0 " size="0.01" rgba="1 1 0 1"/>
-        <site name="goal_5" pos="0 0 0 " size="0.01" rgba="1 0 1 1"/>
         <!-- <site name="finalgoal" pos="0.0 0.0 0.0" size="0.01" rgba="0 0 0 1"/> -->
         
         <body name="asri_table(rectangle)" pos="0 -0.5 0" >

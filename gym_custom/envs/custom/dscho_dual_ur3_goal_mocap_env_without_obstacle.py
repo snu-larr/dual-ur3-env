@@ -1906,8 +1906,11 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
                     x_max, y_max, z_max = self.goal_obj_pos_space.high
                     # goal_obj_low = np.array([-0.15, -0.45, 0.77])
                     # goal_obj_high = np.array([0.15, -0.3, 0.95])
-                    coords = generate_points_with_min_distance(n=self.num_objects, shape=(1,1), min_dist=0.05,\
-                        x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
+                    if self.num_objects==1:
+                        coords = np.random.uniform(np.array([x_min, y_min]), np.array([x_max, y_max]), size = [1,2])
+                    else:
+                        coords = generate_points_with_min_distance(n=self.num_objects, shape=(1,1), min_dist=0.05,\
+                            x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
                     np.random.shuffle(coords)
                     for i in range(self.num_objects):
                         object_xpos = coords[i]
