@@ -3324,8 +3324,9 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     g_control_type='move_gripper_force'
     gripper_action = True
     
-    #env_id = 'dscho-single-ur3-mocap-pickandplace-v1'
-    env_id = 'dscho-single-ur3-mocap-pickandplace-multiobject-v1'
+    # env_id = 'dscho-single-ur3-mocap-pickandplace-v1'
+    env_id = 'dscho-single-ur3-mocap-pickandplace-wall-v1'
+    # env_id = 'dscho-single-ur3-mocap-pickandplace-multiobject-v1'
     # env_id = 'dscho-single-ur3-mocap-door-v1'
     # env_id = 'dscho-single-ur3-mocap-button-v1'
     # env_id = 'dscho-single-ur3-mocap-drawer-v1'
@@ -3335,7 +3336,7 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     from gym_custom.envs.custom.dscho_dual_ur3_goal_mocap_env_without_obstacle import DSCHOSingleUR3PickAndPlaceEnv, MocapSingleWrapper
     
     upright_ver = True
-    multi_objects = True
+    multi_objects = False
     if multi_objects:
         assert upright_ver
         num_objects = 4
@@ -3366,6 +3367,9 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
         elif 'drawer' in env_id:
             env_kwargs = dict(xml_filename= 'dscho_dual_ur3_upright_mocap_drawer_flat_gripper_ver2.xml' if upright_ver else None,
                             task='drawer_close',
+                            )
+        elif 'wall' in env_id:
+            env_kwargs = dict(xml_filename= 'dscho_dual_ur3_upright_mocap_object_wall_flat_gripper.xml' if upright_ver else None,                            
                             )
         else:
             env_kwargs = dict(xml_filename= 'dscho_dual_ur3_upright_mocap_object_flat_gripper.xml' if upright_ver else 'dscho_dual_ur3_mocap_object_flat_gripper.xml',
@@ -3435,7 +3439,7 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     #     env.step(np.array([0,0,0,0]))
     while True:        
         env.render()
-        # env.step(env.action_space.sample())
+        env.step(env.action_space.sample())
     sys.exit()
     # for i in range(100):
     #     env.render()
