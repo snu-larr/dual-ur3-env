@@ -956,7 +956,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                 has_obstacle = False,
                 task = 'pickandplace',
                 observation_type='joint_q', #'ee_object_object', #'ee_object_all'
-                init_qpos_type = None,
+                goal_space_size = 'large',
                 *args,
                 **kwargs
                 ):
@@ -975,7 +975,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         # assert (reduced_observation and not trigonometry_observation) or (not reduced_observation and trigonometry_observation)
         self.reward_by_ee = reward_by_ee
         #self.ur3_random_init = ur3_random_init
-        
+        self.goal_space_size = goal_space_size
         self.curr_path_length = 0
 
         if so3_constraint == 'no' or so3_constraint is None:
@@ -1068,10 +1068,14 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
             goal_obj_high = np.array([0.0, -0.3, 0.95])
         
         if self.init_qpos_type == 'upright': # right 기준
-            # goal_obj_low = np.array([-0.25, -0.5,  self.table_z_offset])
-            # goal_obj_high = np.array([0.25, -0.3, 0.95])
-            goal_obj_low = np.array([-0.25, -0.52, self.table_z_offset])
-            goal_obj_high = np.array([0.25, -0.28, 0.95])
+            if self.goal_space_size=='small':
+                print('Goal space type is small!')
+                goal_obj_low = np.array([-0.15, -0.45,  self.table_z_offset])
+                goal_obj_high = np.array([0.15, -0.3, 0.95])
+            elif self.goal_space_size=='large':
+                print('Goal space type is large!')
+                goal_obj_low = np.array([-0.25, -0.52, self.table_z_offset])
+                goal_obj_high = np.array([0.25, -0.28, 0.95])
 
         self.goal_obj_pos_space = Box(low = goal_obj_low, high = goal_obj_high, dtype=np.float32)
         
@@ -1120,6 +1124,16 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                 )
                 if self.task in ['pickandplace']:
                     goal = goal_obj_pos
+                elif self.task in ['pickandplace_wall']:
+                    wall_boundary_x = [-0.07, 0.07]
+                    while (goal_obj_pos[0] > wall_boundary_x[0]) and (goal_obj_pos[0] < wall_boundary_x[1]):
+                        goal_obj_pos = np.random.uniform(
+                            self.goal_obj_pos_space.low,
+                            self.goal_obj_pos_space.high,
+                            size=(self.goal_obj_pos_space.low.size),
+                        )
+                    goal = goal_obj_pos       
+
                 elif self.task in ['push']:
                     goal = np.concatenate([goal_obj_pos[:2], np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
                 elif self.task in ['assemble']:
@@ -1191,7 +1205,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
 
         # randomly reset the initial position of an object
         if self.has_object:
-            if self.task in ['pickandplace', 'push']:
+            if self.task in ['pickandplace', 'pickandplace_wall', 'push']:
                 object_xpos = np.random.uniform(
                                 self.goal_obj_pos_space.low,
                                 self.goal_obj_pos_space.high,
@@ -1199,6 +1213,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                             )[:2]
                 # object_pos = np.concatenate([object_xpos, np.array([self.goal_obj_pos_space.low[-1]])], axis=-1)
                 object_pos = np.concatenate([object_xpos, np.array([self.table_z_offset])], axis=-1)
+                
                 
                 ee_pos = self.get_endeff_pos(arm=self.which_hand)
                 
@@ -1210,6 +1225,18 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                             )[:2]
                     object_pos = np.concatenate([object_xpos, np.array([self.table_z_offset])], axis=-1)
                 # print('In reset model, ee pos : {} obj pos : {}'.format(ee_pos, object_pos))
+
+                if self.task == 'pickandplace_wall':
+                    wall_boundary_x = [-0.07, 0.07]
+                    while (object_pos[0] > wall_boundary_x[0]) and (object_pos[0] < wall_boundary_x[1]):
+                        object_xpos = np.random.uniform(
+                                self.goal_obj_pos_space.low,
+                                self.goal_obj_pos_space.high,
+                                size=(self.goal_obj_pos_space.low.size),
+                            )[:2]
+                        object_pos = np.concatenate([object_xpos, np.array([self.table_z_offset])], axis=-1)
+                    
+
 
                 object_qpos = self.sim.data.get_joint_qpos('objjoint')
                 assert object_qpos.shape == (7,)
@@ -1264,7 +1291,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                     pass
                 elif debug_opt==2:
                     self._state_goal = object_pos.copy()
-            elif self.task in ['pickandplace', 'push']:
+            elif self.task in ['pickandplace', 'pickandplace_wall', 'push']:
                 while np.linalg.norm(object_pos - self._state_goal) < 0.05:
                     self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
             else: # 'drawer, door, button
@@ -1339,7 +1366,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         dt = self.sim.nsubsteps * self.sim.model.opt.timestep # same as self.dt
 
         if self.has_object:
-            if self.task in ['pickandplace', 'push']:
+            if self.task in ['pickandplace', 'pickandplace_wall', 'push']:
                 obj_pos = self.get_obj_pos(name='obj')
                 obj_rot = rotations.mat2euler(self.sim.data.get_site_xmat('objSite'))
                 obj_velp = self.sim.data.get_site_xvelp('objSite') * dt
@@ -2376,6 +2403,11 @@ class DSCHOSingleUR3PickAndPlaceEnv(DSCHOSingleUR3GoalMocapEnv):
     def __init__(self, *args, **kwargs):
         self.save_init_params(locals())
         super().__init__(has_object=True, block_gripper=False, task='pickandplace', *args, **kwargs)
+
+class DSCHOSingleUR3PickAndPlaceWallEnv(DSCHOSingleUR3GoalMocapEnv):
+    def __init__(self, *args, **kwargs):
+        self.save_init_params(locals())
+        super().__init__(has_object=True, block_gripper=False, task='pickandplace_wall', *args, **kwargs)
 
 class DSCHOSingleUR3PushEnv(DSCHOSingleUR3GoalMocapEnv):
     def __init__(self, *args, **kwargs):
