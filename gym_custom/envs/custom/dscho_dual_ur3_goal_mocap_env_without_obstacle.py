@@ -1125,13 +1125,16 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                 if self.task in ['pickandplace']:
                     goal = goal_obj_pos
                 elif self.task in ['pickandplace_wall']:
-                    wall_boundary_x = [-0.07, 0.07]
-                    while (goal_obj_pos[0] > wall_boundary_x[0]) and (goal_obj_pos[0] < wall_boundary_x[1]):
+                    wall_boundary_x = [-0.05, 0.05]
+                    wall_height_offset = 0.81
+                    # assume wall height is 0.81
+                    while (goal_obj_pos[0] > wall_boundary_x[0] and goal_obj_pos[0] < wall_boundary_x[1]) and (goal_obj_pos[2] < wall_height_offset+0.02):
                         goal_obj_pos = np.random.uniform(
                             self.goal_obj_pos_space.low,
                             self.goal_obj_pos_space.high,
                             size=(self.goal_obj_pos_space.low.size),
                         )
+                    
                     goal = goal_obj_pos       
 
                 elif self.task in ['push']:
@@ -1227,7 +1230,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                 # print('In reset model, ee pos : {} obj pos : {}'.format(ee_pos, object_pos))
 
                 if self.task == 'pickandplace_wall':
-                    wall_boundary_x = [-0.07, 0.07]
+                    wall_boundary_x = [-0.05, 0.05]
                     while (object_pos[0] > wall_boundary_x[0]) and (object_pos[0] < wall_boundary_x[1]):
                         object_xpos = np.random.uniform(
                                 self.goal_obj_pos_space.low,

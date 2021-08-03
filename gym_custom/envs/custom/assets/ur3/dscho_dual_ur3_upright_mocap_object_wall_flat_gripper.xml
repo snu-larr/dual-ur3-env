@@ -174,9 +174,9 @@
         <site name="goal" pos="0.0 -0.27 0.92" size="0.01" rgba="148 0 211 1"/>
         <!-- <site name="finalgoal" pos="0.0 0.0 0.0" size="0.01" rgba="0 0 0 1"/> -->
         
-        <body name="wall" pos="0 -0.45 0.8" euler = "0 0 1.570796">
-            <geom material="wall_brick" type="box" size=".25 .01 .07"/>
-            <geom class="wall_col" type="box" size=".25 .01 .07"/> <!--size=".12 .01 .06"-->
+        <body name="wall" pos="0 -0.45 0.76" euler = "0 0 1.570796">
+            <geom material="wall_brick" type="box" size=".25 .01 .05"/>
+            <geom class="wall_col" type="box" size=".25 .01 .05"/> <!--size=".12 .01 .06"-->
         </body>
 
 

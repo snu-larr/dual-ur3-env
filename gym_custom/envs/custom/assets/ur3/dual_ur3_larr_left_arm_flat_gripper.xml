@@ -38,7 +38,7 @@
                                     <body childclass="robot0:fetchGripper" name="left_gripper:r_gripper_finger_link" pos="0 -0.06 0.11" quat="0.707107 0 -0.707107 0">
                                         <inertial diaginertia="0.1 0.1 0.1" mass="4" pos="-0.01 0 0"></inertial>
                                         <joint axis="0 1 0" name="left_gripper:r_gripper_finger_joint" range="0 0.05"></joint>
-                                        <geom rgba = "1 0 0 0.1" pos="0 0 0" size="0.0385 0.007 0.0135" type="box" name="left_gripper:r_gripper_finger_link" material="robot0:gripper_finger_mat" condim="4" friction="1 0.05 0.01"></geom>
+                                        <geom rgba = "1 0 0 0" pos="0 0 0" size="0.0385 0.007 0.0135" type="box" name="left_gripper:r_gripper_finger_link" material="robot0:gripper_finger_mat" condim="4" friction="1 0.05 0.01"></geom>
                                         <site name="left_gripper:r_fetchGripper:qcX" type="box" pos="0.05 0.0 0.0" size="0.05 0.002 0.002"  quat = " 1.0 0.0  0.0 0."     rgba="1 0 0 0.1" />
                                         <site name="left_gripper:r_fetchGripper:qcY" type="box" pos="0.0 0.05 0.0" size="0.05 0.002 0.002"  quat = " 0.707107 0.0 0.0 0.707107"  rgba="0 1 0 0.1" />
                                         <site name="left_gripper:r_fetchGripper:qcZ" type="box" pos="0.0 0.0 0.05" size="0.05 0.002 0.002"  quat = "-0.707107 0.0 0.707107 0."     rgba="0 0 1 0.1" />
@@ -46,7 +46,7 @@
                                     <body childclass="robot0:fetchGripper" name="left_gripper:l_gripper_finger_link" pos="0 0.06 0.11" quat="0 0.707107 0 0.707107">
                                         <inertial diaginertia="0.1 0.1 0.1" mass="4" pos="-0.01 0 0"></inertial>
                                         <joint axis="0 1 0" name="left_gripper:l_gripper_finger_joint" range="0 0.05"></joint>
-                                        <geom rgba = "0 1 0 0.1" pos="0 0 0" size="0.0385 0.007 0.0135" type="box" name="left_gripper:l_gripper_finger_link" material="robot0:gripper_finger_mat" condim="4" friction="1 0.05 0.01"></geom>
+                                        <geom rgba = "0 1 0 0" pos="0 0 0" size="0.0385 0.007 0.0135" type="box" name="left_gripper:l_gripper_finger_link" material="robot0:gripper_finger_mat" condim="4" friction="1 0.05 0.01"></geom>
                                         <site name="left_gripper:l_fetchGripper:qcX" type="box" pos="0.05 0.0 0.0" size="0.05 0.002 0.002"  quat = " 1.0 0.0  0.0 0."     rgba="1 0 0 0.1" />
                                         <site name="left_gripper:l_fetchGripper:qcY" type="box" pos="0.0 0.05 0.0" size="0.05 0.002 0.002"  quat = " 0.707107 0.0 0.0 0.707107"  rgba="0 1 0 0.1" />
                                         <site name="left_gripper:l_fetchGripper:qcZ" type="box" pos="0.0 0.0 0.05" size="0.05 0.002 0.002"  quat = "-0.707107 0.0 0.707107 0."     rgba="0 0 1 0.1" />
