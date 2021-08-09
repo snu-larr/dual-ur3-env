@@ -1072,6 +1072,10 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                 print('Goal space type is small!')
                 goal_obj_low = np.array([-0.15, -0.45,  self.table_z_offset])
                 goal_obj_high = np.array([0.15, -0.3, 0.95])
+            elif self.goal_space_size=='medium':
+                print('Goal space type is medium!')
+                goal_obj_low = np.array([-0.22, -0.5,  self.table_z_offset])
+                goal_obj_high = np.array([0.22, -0.3, 0.9])
             elif self.goal_space_size=='large':
                 print('Goal space type is large!')
                 goal_obj_low = np.array([-0.25, -0.52, self.table_z_offset])
