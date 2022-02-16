@@ -3324,8 +3324,8 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     g_control_type='move_gripper_force'
     gripper_action = True
     
-    # env_id = 'dscho-single-ur3-mocap-pickandplace-v1'
-    env_id = 'dscho-single-ur3-mocap-pickandplace-wall-v1'
+    env_id = 'dscho-single-ur3-mocap-pickandplace-v1'
+    # env_id = 'dscho-single-ur3-mocap-pickandplace-wall-v1'
     # env_id = 'dscho-single-ur3-mocap-pickandplace-multiobject-v1'
     # env_id = 'dscho-single-ur3-mocap-door-v1'
     # env_id = 'dscho-single-ur3-mocap-button-v1'
@@ -3349,7 +3349,7 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
                         so3_constraint='vertical_side', #사실상 의미x. so3 error calculation에만 사용
                         flat_gripper = True, 
                         xml_filename = xml_filename,
-                        custom_frame_skip = 10, # 0.005 * 10 =0.05s per step
+                        custom_frame_skip = 20, # 0.005 * 20 =0.1s per step
                         num_objects=num_objects,
                         )
         sequential_rl = True
@@ -3378,11 +3378,11 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
         env_kwargs.update(dict(initMode = None, 
                             sparse_reward = True, 
                             which_hand=which_hand,
-                            observation_type = 'ee_object_all',
+                            observation_type = 'ee_object_pos_w_grip_delta_pos',
                             trigonometry_observation = False,
                             so3_constraint='vertical_side', #사실상 의미x. so3 error calculation에만 사용
                             flat_gripper = True,                             
-                            custom_frame_skip = 10, # 0.005 * 10 =0.05s per step
+                            custom_frame_skip = 10, # 0.005 * 20 =0.1s per step
                             ))
     env = gym_custom.make(env_id , **env_kwargs)
     
@@ -3398,7 +3398,7 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
                             ur3_scale_factor=ur3_scale_factor,
                             gripper_scale_factor=gripper_scale_factor,
                             # so3_constraint='vertical_side',
-                            action_downscale=0.02, # Assuming tanh action,
+                            action_downscale=0.01, # Assuming tanh action,
                             gripper_force_scale=1,
                             )
     # 1 * 0.02 = maximum 0.02m per 1step
@@ -3437,10 +3437,10 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     # time.sleep(2)
     # for i in range(1):
     #     env.step(np.array([0,0,0,0]))
-    while True:        
-        env.render()
-        env.step(env.action_space.sample())
-    sys.exit()
+    # while True:        
+    #     env.render()
+    #     env.step(env.action_space.sample())
+    # sys.exit()
     # for i in range(100):
     #     env.render()
     #     env.step(np.array([0.0, 0, 0, 1.0]))

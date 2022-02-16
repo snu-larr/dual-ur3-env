@@ -957,6 +957,8 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                 task = 'pickandplace',
                 observation_type='joint_q', #'ee_object_object', #'ee_object_all'
                 goal_space_size = 'large',
+                fix_init_obj = False,
+                fix_goal = False,
                 *args,
                 **kwargs
                 ):
@@ -991,10 +993,12 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         self.block_gripper = block_gripper
         self.has_object = has_object
         self.has_obstacle = has_obstacle
-
+        
         if has_obstacle:
             raise NotImplementedError
 
+        self.fix_init_obj = fix_init_obj
+        self.fix_goal = fix_goal
 
         self.previous_ee_pos = None
         self.previous_obj_pos = None
@@ -1032,7 +1036,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
             assert not self.trigonometry_observation
             # raise NotImplementedError
             self.obs_nqpos = None
-        elif self.observation_type=='ee_object_pos_w_grip_custom_vel' or self.observation_type=='ee_object_pos_w_grip' or self.observation_type=='ee_object_pos_w_custom_vel':
+        elif self.observation_type in ['ee_object_pos_w_grip_custom_vel' ,'ee_object_pos_w_grip', 'ee_object_pos_w_custom_vel', 'ee_object_pos_w_grip_delta_pos']:
             self.obs_nqpos = None
        
 
@@ -1074,8 +1078,8 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                 goal_obj_high = np.array([0.15, -0.3, 0.95])
             elif self.goal_space_size=='medium':
                 print('Goal space type is medium!')
-                goal_obj_low = np.array([-0.22, -0.5,  self.table_z_offset])
-                goal_obj_high = np.array([0.22, -0.3, 0.9])
+                goal_obj_low = np.array([-0.23, -0.51,  self.table_z_offset])
+                goal_obj_high = np.array([0.23, -0.29, 0.9])
             elif self.goal_space_size=='large':
                 print('Goal space type is large!')
                 goal_obj_low = np.array([-0.25, -0.52, self.table_z_offset])
@@ -1111,6 +1115,8 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         # need to mod for resample if goal is inside the wall
         if full_state_goal:
             raise NotImplementedError
+        elif self.fix_goal:    
+            goal = np.zeros(3)
         else :
             if not self.has_object: # reach
                 goal_ee_pos = np.random.uniform(
@@ -1212,7 +1218,13 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
 
         # randomly reset the initial position of an object
         if self.has_object:
-            if self.task in ['pickandplace', 'pickandplace_wall', 'push']:
+            if self.fix_init_obj:
+                object_pos = np.array([0.05, -0.4, self.table_z_offset])
+                object_qpos = self.sim.data.get_joint_qpos('objjoint')
+                assert object_qpos.shape == (7,)
+                object_qpos[:3] = object_pos
+                self.sim.data.set_joint_qpos('objjoint', object_qpos)
+            elif self.task in ['pickandplace', 'pickandplace_wall', 'push']:
                 object_xpos = np.random.uniform(
                                 self.goal_obj_pos_space.low,
                                 self.goal_obj_pos_space.high,
@@ -1370,7 +1382,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
             qpos = np.concatenate([np.cos(qpos), np.sin(qpos)], axis = -1)
         
         # velocities
-        dt = self.sim.nsubsteps * self.sim.model.opt.timestep # same as self.dt
+        dt = self.sim.nsubsteps * self.sim.model.opt.timestep # same as self.dt (0.05)
 
         if self.has_object:
             if self.task in ['pickandplace', 'pickandplace_wall', 'push']:
@@ -1423,17 +1435,21 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
             obs = np.concatenate([qpos, qvel, ee_pos, obj_pos])
         elif self.observation_type == 'ee_object_pos':
             obs = np.concatenate([ee_pos, obj_pos, obj_rel_pos])
-        elif self.observation_type == 'ee_object_pos_w_grip_custom_vel' or self.observation_type=='ee_object_pos_w_grip' or self.observation_type=='ee_object_pos_w_custom_vel':
+        elif self.observation_type in ['ee_object_pos_w_grip_custom_vel', 'ee_object_pos_w_grip' ,'ee_object_pos_w_custom_vel', 'ee_object_pos_w_grip_delta_pos']:
             if self.previous_ee_pos is None:
                 ee_velp = np.zeros_like(ee_pos)
+                ee_delta_pos = np.zeros_like(ee_pos)
             else:
-                ee_velp = (ee_pos - self.previous_ee_pos)/dt                
+                ee_velp = (ee_pos - self.previous_ee_pos)/dt
+                ee_delta_pos = (ee_pos - self.previous_ee_pos)
 
 
             if self.previous_obj_pos is None:
                 obj_velp = np.zeros_like(obj_pos)
+                obj_delta_pos = np.zeros_like(obj_pos)
             else:
                 obj_velp = (obj_pos - self.previous_obj_pos)/dt
+                obj_delta_pos = (obj_pos - self.previous_obj_pos)
 
             self.previous_ee_pos = ee_pos.copy()
             self.previous_obj_pos = obj_pos.copy()
@@ -1447,8 +1463,12 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                 obs = np.concatenate([
                     ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), obj_velp.ravel(), ee_velp
                 ])
-            else:
+            elif self.observation_type=='ee_object_pos_w_grip':
                 obs = np.concatenate([ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), gripper_state])
+            elif self.observation_type=='ee_object_pos_w_grip_delta_pos':
+                obs = np.concatenate([
+                    ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), gripper_state, obj_delta_pos.ravel(), ee_delta_pos.ravel()
+                ])
 
         elif self.observation_type == 'ee_object_all':
             
@@ -1489,8 +1509,10 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         #                 print('dummy weld set')
         #                 self.sim.model.eq_data[i, :] = np.array([0., 0., 0., 1., 0., 0., 0.])
         #     self.sim.forward()
-
-        multi_step = 3# 10으로 하고 framse skip 10으로 하고, desired position에서 불변인지 check
+        if self.custom_frame_skip==10:
+            multi_step = 3# 10으로 하고 framse skip 10으로 하고, desired position에서 불변인지 check
+        elif self.custom_frame_skip==20:
+            multi_step = 3
         for i in range(multi_step):
             self.sim.step()
         # self._step_callback() # gripper close related
@@ -1832,17 +1854,21 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
             obs = np.concatenate([qpos, qvel, ee_pos, obj_pos])
         elif self.observation_type == 'ee_object_pos':
             obs = np.concatenate([ee_pos, obj_pos, obj_rel_pos])
-        elif self.observation_type == 'ee_object_pos_w_grip_custom_vel' or self.observation_type=='ee_object_pos_w_grip' or self.observation_type=='ee_object_pos_w_custom_vel':
+        elif self.observation_type in ['ee_object_pos_w_grip_custom_vel' , 'ee_object_pos_w_grip' ,'ee_object_pos_w_custom_vel', 'ee_object_pos_w_grip_delta_pos']:
             if self.previous_ee_pos is None:
                 ee_velp = np.zeros_like(ee_pos)
+                ee_delta_pos = np.zeros_like(ee_pos)
             else:
                 ee_velp = (ee_pos - self.previous_ee_pos)/dt                
+                ee_delta_pos = (ee_pos - self.previous_ee_pos)       
 
 
             if self.previous_obj_pos is None:
                 obj_velp = np.zeros_like(obj_pos)
+                obj_delta_pos = np.zeros_like(obj_pos)
             else:
                 obj_velp = (obj_pos - self.previous_obj_pos)/dt
+                obj_delta_pos = (obj_pos - self.previous_obj_pos)
 
             self.previous_ee_pos = ee_pos.copy()
             self.previous_obj_pos = obj_pos.copy()
@@ -1856,8 +1882,12 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
                 obs = np.concatenate([
                     ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), obj_velp.ravel(), ee_velp
                 ])
-            else:
+            elif self.observation_type=='ee_object_pos_w_grip':
                 obs = np.concatenate([ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), gripper_state])
+            elif self.observation_type=='ee_object_pos_w_grip_delta_pos':
+                obs = np.concatenate([
+                    ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), gripper_state, obj_delta_pos.ravel(), ee_delta_pos.ravel()
+                ])
 
         elif self.observation_type == 'ee_object_all':
             
