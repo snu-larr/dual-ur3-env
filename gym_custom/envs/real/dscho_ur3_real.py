@@ -11,15 +11,15 @@ from gym_custom.envs.real.ur3_env import UR3RealEnv
 from gym_custom.envs.custom.ur_utils import URScriptWrapper, URScriptWrapper_DualUR3
 from gym_custom import Wrapper
 from gym_custom.envs.custom.ur_utils import SO3Constraint, UprightConstraint, NoConstraint
-import tensorflow as tf
+# import tensorflow as tf
 import pickle
 import joblib
 import time
 import sys
 # import mujoco_py
 from gym_custom.envs.real.utils import prompt_yes_or_no
-from gym_custom.envs.robotics import rotations #, robot_env, utils
-
+# from gym_custom.envs.robotics import rotations #, robot_env, utils
+from gym_custom.envs.real import rotations
 color2num = dict(
     gray=30,
     red=31,
@@ -31,6 +31,13 @@ color2num = dict(
     white=37,
     crimson=38
 )
+
+def get_se3(R,p):
+    T = np.concatenate([np.concatenate([R,  p[:, None]], axis = -1), np.array([[0,0,0,1]])], axis= 0) #[3,4], [1,4] -> [4,4]
+    return T
+def get_se3_inv(R,p):
+    T = np.concatenate([np.concatenate([R.T,  np.matmul(-R.T, p[:, None])], axis = -1), np.array([[0,0,0,1]])], axis= 0) #[3,4], [1,4] -> [4,4]
+    return T
 
 def colorize(string, color, bold=False, highlight=False):
     attr = []
@@ -61,6 +68,7 @@ class EndEffectorPositionControlSingleWrapperReal(object): #URScriptWrapper_Dual
                 speedj_args=None, 
                 servoj_args = None, 
                 g_control_args = None,
+                multi_step = 1,
                 *args, 
                 **kwargs
                 ):
@@ -77,11 +85,11 @@ class EndEffectorPositionControlSingleWrapperReal(object): #URScriptWrapper_Dual
      
         self.gripper_action = gripper_action
         self.dt = self.env.dt
-
+        self.gripper_max_close_for_pickandplace = 255 # 6cm block
         self.speedj_args = speedj_args
         self.servoj_args = servoj_args
         self.g_control_args = g_control_args
-       
+        self.multi_step = multi_step
         if gripper_action:
             self.act_low = act_low = np.array([-1, -1, -1, -1])
             self.act_high = act_high= np.array([1, 1, 1, 1])
@@ -91,15 +99,15 @@ class EndEffectorPositionControlSingleWrapperReal(object): #URScriptWrapper_Dual
     
         
         self.ur3_act_dim = 3 #self.wrapper_right.ndof
-        self.gripper_act_dim = self.wrapper_right.ngripperdof
+        self.gripper_act_dim = 1 # self.wrapper_right.ngripperdof
         assert self.ur3_act_dim==3
         assert self.gripper_act_dim==1
         self.action_space = Box(low=act_low, high=act_high, dtype=np.float32)
         print(colorize('WARNING : CHECK action space boundary : {}'.format(self.action_space), 'green', bold=True))
         
     def reset(self, **kwargs):
-        # return self.env.reset(**kwargs)
-        return super().reset(**kwargs)
+        return self.env.reset(**kwargs)
+        # return super().reset(**kwargs)
 
     def gripper_action_scale(self, gripper_act):
         # Assume gripper act : [-1, 1]
@@ -107,7 +115,7 @@ class EndEffectorPositionControlSingleWrapperReal(object): #URScriptWrapper_Dual
         # Real : 0 : fully open, 255 : fully closed
         gripper_act = gripper_act.copy()
         rescaled_act = (gripper_act+1)/(1-(-1)) # 0~1 rescale 
-        rescaled_act = 255*rescaled_act # 0~255 rescale
+        rescaled_act = self.gripper_max_close_for_pickandplace*rescaled_act*1.6 # 0~max_close_for_pickandplace rescale
         return rescaled_act 
         
     def step(self, action, wait = False):
@@ -156,10 +164,11 @@ class EndEffectorPositionControlSingleWrapperReal(object): #URScriptWrapper_Dual
         command = {self.q_control_type : q_control_args,
                    self.g_control_type : g_control_args,
                    }
-
+        for i in range(self.multi_step-1):
+            self.env.step(command)
         return self.env.step(command)
         
-   def _get_control_kwargs(self, q_control_type, g_control_type, ur3_action, gripper_action):
+    def _get_control_kwargs(self, q_control_type, g_control_type, ur3_action, gripper_action):
 
         if q_control_type=='speedj':
             q_control_args = copy.deepcopy(self.speedj_args)
@@ -186,9 +195,10 @@ class EndEffectorPositionControlSingleWrapperReal(object): #URScriptWrapper_Dual
 
 class DSCHOUR3RealEnv(UR3RealEnv):
     def __init__(self, *args, **kwargs):
-        self.save_init_params(locals())
+        # self.save_init_params(locals())
         self.init_qpos_candidates = {}
-            
+        self.init_qpos_type = 'upright'            
+        self.ur3_nqpos = 6
         # 양팔 널찍이 벌려있는 상태
         # default_right_qpos = np.array([[-90.0, -90.0, -90.0, -90.0, -135.0, 180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
         default_left_qpos = np.array([[90.0, -90.0, 90.0, -90.0, 135.0, -180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
@@ -218,17 +228,76 @@ class DSCHOUR3RealEnv(UR3RealEnv):
             self.init_qpos_candidates['gripper_q_right_des'] =default_gripper_right_qpos
             self.init_qpos_candidates['gripper_q_left_des'] =default_gripper_left_qpos
 
+        self.gripper_min_position = 0
+        self.gripper_max_position = 255 # just for _get_obs in _define_class_variables
         super().__init__(*args, **kwargs)
+
+
+        self.gripper_min_position = self.interface.get_gripper_min_position()
+        self.gripper_max_position = self.interface.get_gripper_max_position()
+
+    def _define_class_variables(self):
+        '''overridable method'''
+        # Initial position/velocity
+        self._init_qpos = self.init_qpos_candidates['q_'+self.which_hand+'_des']
+        self._init_qvel = np.zeros([6])
+        self._init_gripperpos = np.zeros([1])
+        self._init_grippervel = np.zeros([1])
+
+        # Variables for forward/inverse kinematics
+        # https://www.universal-robots.com/articles/ur-articles/parameters-for-calculations-of-kinematics-and-dynamics/
+        self.kinematics_params = {}
+
+        # 1. Last frame aligns with (right/left)_ee_link body frame
+        # self.kinematics_params['d'] = np.array([0.1519, 0, 0, 0.11235, 0.08535, 0.0819]) # in m
+        # 2. Last frame aligns with (right/left)_gripper:hand body frame
+        self.kinematics_params['d'] = np.array([0.1519, 0, 0, 0.11235, 0.08535, 0.0819+0.12]) # in m
+        self.kinematics_params['a'] = np.array([0, -0.24365, -0.21325, 0, 0, 0]) # in m
+        self.kinematics_params['alpha'] =np.array([np.pi/2, 0, 0, np.pi/2, -np.pi/2, 0]) # in rad
+        self.kinematics_params['offset'] = np.array([0, 0, 0, 0, 0, 0])
+        self.kinematics_params['ub'] = np.array([2*np.pi for _ in range(6)])
+        self.kinematics_params['lb'] = np.array([-2*np.pi for _ in range(6)])
         
+        if self.init_qpos_type=='upright':
+            path_to_pkl = os.path.join(os.path.dirname(__file__), 'ur/upright_ur3_kinematics_params.pkl')
+        else: # dual arm posture params       
+            path_to_pkl = os.path.join(os.path.dirname(__file__), 'ur/dual_ur3_kinematics_params.pkl')
+
+        if os.path.isfile(path_to_pkl):
+            kinematics_params_from_pkl = pickle.load(open(path_to_pkl, 'rb'))
+            self.kinematics_params['T_wb_right'] = kinematics_params_from_pkl['T_wb_right']
+            self.kinematics_params['T_wb_left'] = kinematics_params_from_pkl['T_wb_left']
+        else:
+            raise FileNotFoundError('No such file: %s. Run MuJoCo-based simulated environment to generate file.'%(path_to_pkl))
+        
+        # Define spaces
+        self._set_action_space()
+        obs = self._get_obs()
+        self.observation_space = self._set_observation_space(obs)
+
+        # Misc
+        self._episode_step = None
+
         
     def _get_init_qpos(self):
         return self._init_qpos.copy()
 
+    def gripper_rescale(self, gripper_state):
+        # assume gripper state is gripper_min ~gripper max(ideally, 0~255 , but auto-calibarted value is around 3~230)
+        # Sim action : -1 : fully open, 1 : fully closed
+        # Sim flat gripper state : 0 : fully open, 0.05 : fully closed
+        # Real : 0 : fully open, 255 : fully closed
+        gripper_state = gripper_state[0].copy()
+        assert gripper_state >=0 and gripper_state <= 255, 'assume gripper state is raw data from ur interface'
+        gripper_state = (gripper_state-self.gripper_min_position)/(self.gripper_max_position - self.gripper_min_position) # 0~1
+        # gripper_state = gripper_state/255 # 0~1
+        gripper_state *= 0.05 # 0 ~ 0.05
+        gripper_state = np.array([gripper_state, gripper_state])
+        return gripper_state
 
-
-    def step(self, action):
-        action = action.copy()
-        raise NotImplementedError('Currently, Not implemented for dual arm. We just overrided it in sigle arm env')
+    # def step(self, action):
+    #     action = action.copy()
+    #     raise NotImplementedError('Currently, Not implemented for dual arm. We just overrided it in sigle arm env')
         
         
 
@@ -267,7 +336,7 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                 reward_by_ee = False,                                 
                 reward_success_criterion='ee_pos',
                 distance_threshold = 0.05,
-                initMode='vertical',
+                # initMode='vertical',
                 which_hand='right', 
                 so3_constraint ='vertical_side',
                 has_object = False,
@@ -276,14 +345,16 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                 observation_type='joint_q', #'ee_object_object', #'ee_object_all'
                 init_qpos_type = None,
                 predefined_goal = None,
+                optitrack_subscriber = None,
+                custom_processed_vel = False,
                 *args,
                 **kwargs
                 ):
-        self.save_init_params(locals())
+        # self.save_init_params(locals())
 
         self.full_state_goal = full_state_goal        
         self.trigonometry_observation = trigonometry_observation
-        
+        self._state_goal = None # np.zeros(3)
         self.task = task
         self.observation_type = observation_type
         self.init_qpos_type = init_qpos_type
@@ -302,9 +373,14 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
         
         self.sparse_reward = sparse_reward
         self.distance_threshold = distance_threshold
-        
+        self.custom_processed_vel = custom_processed_vel
         self.block_gripper = block_gripper
         self.has_object = has_object
+        if has_object:
+            # assert optitrack_subscriber is not None
+            self.optitrack_subscriber = optitrack_subscriber
+            
+            
         
 
         self.previous_ee_pos = None
@@ -313,7 +389,7 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
         self.reward_success_criterion = reward_success_criterion
         
         self.which_hand = which_hand
-        super().__init__(initMode=initMode, 
+        super().__init__(# initMode=initMode, 
                         # ur3_random_init=ur3_random_init, 
                         *args, 
                         **kwargs
@@ -358,10 +434,10 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
         self._state_goal = self.sample_goal(self.full_state_goal)
         
 
-        observation, reward, done, _info = self.step(self.action_space.sample()) # goalenv는 return obs_dict
-        assert not done
+        # observation, reward, done, _info = self.step(self.action_space.sample()) # goalenv는 return obs_dict
+        # assert not done
         
-        self.observation_space = self._set_observation_space(observation) 
+        # self.observation_space = self._set_observation_space(observation) 
     
     def _set_action_space(self):
         act_low = np.array([-1,-1,-1,-1, -1,-1,-1,-1])
@@ -426,7 +502,7 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
             print('exiting program!')
             sys.exit()
         self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
-        
+        self._episode_step = 0
         # if self.has_object: # reach인 경우엔 필요x            
         #     if self.task in ['reach']:
         #         raise NotImplementedError
@@ -446,15 +522,18 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
 
         return observation
         
+
+
     # Only ur3 qpos,vel(not include gripper), object pos(achieved_goal), desired_goal
     def _get_obs(self):
         
-        obs_dict = super.get_obs_dict()
+        obs_dict = super().get_obs_dict()
         # qpos, qvel gripperpos, grippervel
         qpos = obs_dict['qpos']
         qvel = obs_dict['qvel']
         gripperpos = obs_dict['gripperpos']
-        grippervel = obs_dict['grippervel']
+        gripperpos = self.gripper_rescale(gripper_state=gripperpos)
+        # grippervel = obs_dict['grippervel']
         ee_pos = self.get_endeff_pos(arm=self.which_hand, q = qpos)
 
         
@@ -463,10 +542,17 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
 
         # NOTE : e.g. 20Hz인데 20보다 작으면 dt가 부정확할수도(즉 0.05나와야하는데 실제론 0.06일수도)
         dt = self.dt
+        if dt==0.1 and self.custom_processed_vel: # For matching sim policy inputs
+            print('custom process vel is used!')
+            dt = 0.05
+            
+            
+        print('In get_obs, dt : ', dt)
+
 
         if self.has_object:
-            obj_pos = self.get_obj_pos(name='obj')
-            obj_rot = rotations.quat2euler(self.get_obj_quat(name='obj'))
+            obj_pos = self.get_obj_pos(name='block_5cm_red')
+            # obj_rot = rotations.quat2euler(self.get_obj_quat(name='obj'))
             # obj_velp = None #self.sim.data.get_site_xvelp('objSite') * dt
             # obj_velr = None #self.sim.data.get_site_xvelr('objSite') * dt
             obj_rel_pos = obj_pos - ee_pos
@@ -483,14 +569,18 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
             if self.previous_ee_pos is None:
                 ee_velp = np.zeros_like(ee_pos)
             else:
-                ee_velp = (ee_pos - self.previous_ee_pos)/dt                
-
+                if self.custom_processed_vel:
+                    ee_velp = (ee_pos - self.previous_ee_pos)/dt*0                
+                else:
+                    ee_velp = (ee_pos - self.previous_ee_pos)/dt
 
             if self.previous_obj_pos is None:
                 obj_velp = np.zeros_like(obj_pos)
             else:
-                obj_velp = (obj_pos - self.previous_obj_pos)/dt
-
+                if self.custom_processed_vel:
+                    obj_velp = (obj_pos - self.previous_obj_pos)/dt*0
+                else:
+                    obj_velp = (obj_pos - self.previous_obj_pos)/dt
             self.previous_ee_pos = ee_pos.copy()
             self.previous_obj_pos = obj_pos.copy()
 
@@ -520,7 +610,9 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                     achieved_goal = ee_pos
                 else:
                     achieved_goal = obj_pos
-            
+        if self._state_goal is None:
+            self._state_goal = np.zeros(3)
+
         return {
             'observation' : obs.copy(),
             'achieved_goal' : achieved_goal.copy(),
@@ -633,17 +725,146 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
 
         return reward
 
-
+    
     # obj related
-    def get_obj_pos(self, name=None):
-        raise NotImplementedError('should be implemented with optitrack or vicon')
 
-        if not self.has_object:
-            raise NotImplementedError
-        if name is None:
-            return self.data.get_body_xpos('obj')
-        else :
-            return self.data.get_body_xpos(name) 
+    def get_calibration_info(self, name):
+        obs_dict = super().get_obs_dict()
+        # qpos, qvel gripperpos, grippervel
+        qpos = obs_dict['qpos']
+        qvel = obs_dict['qvel']
+        gripperpos = obs_dict['gripperpos']
+        gripperpos = self.gripper_rescale(gripper_state=gripperpos)
+        # grippervel = obs_dict['grippervel']
+        ee_pos = self.get_endeff_pos(arm=self.which_hand, q = qpos)
+
+        
+        data = self.optitrack_subscriber.get_optitrack_data()
+        table_pos_w = np.array([data['ur3_table']['x'], data['ur3_table']['y'], data['ur3_table']['z']])
+        table_quat_w = np.array([data['ur3_table']['quat_x'], data['ur3_table']['quat_y'], data['ur3_table']['quat_z'],data['ur3_table']['quat_w']])
+        object_pos_w = np.array([data[name]['x'], data[name]['y'], data[name]['z']])
+        
+        R_wt = rotations.quat2mat(table_quat_w)
+        P_wt = table_pos_w
+        T_wt = get_se3(R_wt, P_wt)
+        T_wt_inv = get_se3_inv(R_wt, P_wt)
+        
+        T_gb = self.kinematics_params['T_wb_right'] # ground to base of robot
+        T_gb[:, -1] = np.array([0, 0, 0.71, 1], dtype=np.float64)
+        
+        # NOTE : This is assumption!!
+        R_bt = np.array([[-1,0,0], [0,-1,0], [0,0,1]], dtype=np.float64)
+        P_bt = np.array([0.135, -0.105, 0.03], dtype=np.float64)
+
+        T_bt = get_se3(R_bt, P_bt)
+        
+        obj_pos = np.matmul(np.matmul(np.matmul(T_gb, T_bt), T_wt_inv), np.concatenate([object_pos_w, np.array([1])])[:, None]).squeeze()[:3]
+        
+        gripper_state = gripperpos
+        
+
+            
+        obs = np.concatenate([
+            ee_pos, obj_pos.ravel()
+        ])
+        return obs
+    
+    def get_multiple_obj_pos(self, name=None):
+        # return np.zeros(3)
+        if self.optitrack_subscriber is None:
+            print('optitrack is None')
+            return np.zeros(3)
+        data = self.optitrack_subscriber.get_optitrack_data()
+        if name is not None:
+            # obj_x = data[name]['x']
+            # obj_y = data[name]['y']
+            # obj_z = data[name]['z']
+            # quat_x = data[name]['quat_x']
+            # quat_y = data[name]['quat_y']
+            # quat_z = data[name]['quat_z']
+            # sequence = data[name]['sequence'] 
+            table_pos_w = np.array([data['ur3_table']['x'], data['ur3_table']['y'], data['ur3_table']['z']])
+            table_quat_w = np.array([data['ur3_table']['quat_x'], data['ur3_table']['quat_y'], data['ur3_table']['quat_z'],data['ur3_table']['quat_w']])
+            assert name[0] == 'ur3_table'
+            object_pos_w_list = []
+            for id in name[1:]: 
+                object_pos_w_list.append(np.array([data[id]['x'], data[id]['y'], data[id]['z']]))
+            
+            
+            R_wt = rotations.quat2mat(table_quat_w)
+            P_wt = table_pos_w
+            T_wt = get_se3(R_wt, P_wt)
+            T_wt_inv = get_se3_inv(R_wt, P_wt)
+            
+            T_gb = self.kinematics_params['T_wb_right'] # ground to base of robot
+            T_gb[:, -1] = np.array([0, 0, 0.71, 1], dtype=np.float64)
+            
+            # NOTE : This is assumption!!
+            R_bt = np.array([[-1,0,0], [0,-1,0], [0,0,1]], dtype=np.float64)
+            P_bt = np.array([0.135, -0.105, 0.03], dtype=np.float64)
+
+
+            T_bt = get_se3(R_bt, P_bt)
+            obj_pos_list = []
+            for i in range(len(name[1:])):
+                obj_pos_list.append(np.matmul(np.matmul(np.matmul(T_gb, T_bt), T_wt_inv), np.concatenate([object_pos_w_list[i], np.array([1])])[:, None]).squeeze()[:3])
+            obj_pos = np.stack(obj_pos_list, axis = 0) #[num_obj, dim]
+            return obj_pos
+
+    def get_obj_pos(self, name=None):
+        # return np.zeros(3)
+        if self.optitrack_subscriber is None:
+            print('optitrack is None')
+            return np.zeros(3)
+        data = self.optitrack_subscriber.get_optitrack_data()
+        if name is not None:
+            # obj_x = data[name]['x']
+            # obj_y = data[name]['y']
+            # obj_z = data[name]['z']
+            # quat_x = data[name]['quat_x']
+            # quat_y = data[name]['quat_y']
+            # quat_z = data[name]['quat_z']
+            # sequence = data[name]['sequence'] 
+            table_pos_w = np.array([data['ur3_table']['x'], data['ur3_table']['y'], data['ur3_table']['z']])
+            table_quat_w = np.array([data['ur3_table']['quat_x'], data['ur3_table']['quat_y'], data['ur3_table']['quat_z'],data['ur3_table']['quat_w']])
+            object_pos_w = np.array([data[name]['x'], data[name]['y'], data[name]['z']])
+            
+            R_wt = rotations.quat2mat(table_quat_w)
+            P_wt = table_pos_w
+            T_wt = get_se3(R_wt, P_wt)
+            T_wt_inv = get_se3_inv(R_wt, P_wt)
+            
+            T_gb = self.kinematics_params['T_wb_right'] # ground to base of robot
+            T_gb[:, -1] = np.array([0, 0, 0.71, 1], dtype=np.float64)
+            
+            # NOTE : This is assumption!!
+            R_bt = np.array([[-1,0,0], [0,-1,0], [0,0,1]], dtype=np.float64)
+            P_bt = np.array([0.135, -0.105, 0.03], dtype=np.float64)
+
+
+            T_bt = get_se3(R_bt, P_bt)
+            
+            obj_pos = np.matmul(np.matmul(np.matmul(T_gb, T_bt), T_wt_inv), np.concatenate([object_pos_w, np.array([1])])[:, None]).squeeze()[:3]
+            
+            return obj_pos
+            
+        else:
+            obj_x = data['x']
+            obj_y = data['y']
+            obj_z = data['z']
+            quat_x = data['quat_x']
+            quat_y = data['quat_y']
+            quat_z = data['quat_z']
+            sequence = data['sequence']
+            return np.array([obj_x, obj_y, obj_z])
+        # raise NotImplementedError('should be implemented with optitrack or vicon')
+
+        # if not self.has_object:
+        #     raise NotImplementedError
+        # if name is None:
+        #     return self.data.get_body_xpos('obj')
+        # else :
+        #     return self.data.get_body_xpos(name) 
 
     def get_obj_quat(self, name=None):
         raise NotImplementedError('should be implemented with optitrack or vicon')
@@ -661,25 +882,35 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectRealEnv(DSCHOSingleUR3GoalRealEnv):
     
     def __init__(self,                
                 num_objects = 1,
+                weight_dim = None,
+                sequential_rl = False,
+                predefined_sequential_goal_list = None,
                 *args,
                 **kwargs
                 ):
-        self.save_init_params(locals())
+        # self.save_init_params(locals())
         self.num_objects = num_objects
         self.goal_object_idx = 0
         self.goal_weight_is_set = False
-        super().__init__(has_object=True,  block_gripper=False,  task='pickandplace', *args, **kwargs)
-    
-    def _get_obs(self):
+        self.weight_dim = weight_dim
+        self.sequential_rl = sequential_rl
+        self.predefined_sequential_goal_list = predefined_sequential_goal_list
         
-        obs_dict = super.get_obs_dict()
+        super().__init__(has_object=True,  block_gripper=False,  task='pickandplace', *args, **kwargs)
+        # if sequential_rl:
+        #     self._state_goal = np.concatenate(predefined_sequential_goal_list)
+
+    def _get_obs(self):
+        obs_dict = super().get_obs_dict()
         # qpos, qvel gripperpos, grippervel
         qpos = obs_dict['qpos']
         qvel = obs_dict['qvel']
         gripperpos = obs_dict['gripperpos']
-        grippervel = obs_dict['grippervel']
+        gripperpos = self.gripper_rescale(gripper_state=gripperpos)
+        # grippervel = obs_dict['grippervel']
         ee_pos = self.get_endeff_pos(arm=self.which_hand, q = qpos)
-        
+
+        self.ee_pos = ee_pos.copy()
         if self.trigonometry_observation:
             qpos = np.concatenate([np.cos(qpos), np.sin(qpos)], axis = -1)
         
@@ -690,32 +921,42 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectRealEnv(DSCHOSingleUR3GoalRealEnv):
             object_velr_list = []
             object_rel_pos_list = []
             
-            for i in range(self.num_objects):
-                obj_pos = self.get_obj_pos(name='obj_'+str(i))
+            obj_pos = self.get_multiple_obj_pos(self.optitrack_subscriber.id_list)
+            obj_rel_pos = obj_pos - ee_pos[None, :]
+            # NOTE : e.g. 20Hz인데 20보다 작으면 dt가 부정확할수도(즉 0.05나와야하는데 실제론 0.06일수도)
+            dt = self.dt
+            if dt==0.1 and self.custom_processed_vel: # For matching sim policy inputs
+                print('custom process vel is used!')
+                dt = 0.05
+                
+                
+            print('In get_obs, dt : ', dt)
+            # for i in range(self.num_objects):
+            #     obj_pos = self.get_multiple_obj_pos(self.optitrack_subscriber.optitrack_id_list)
 
-                obj_rot = rotations.mat2euler(self.sim.data.get_site_xmat('objSite_'+str(i)))
-                # velocities
-                dt = self.sim.nsubsteps * self.sim.model.opt.timestep # same as self.dt
-                obj_velp = self.sim.data.get_site_xvelp('objSite_'+str(i)) * dt
-                obj_velr = self.sim.data.get_site_xvelr('objSite_'+str(i)) * dt
-                obj_rel_pos = obj_pos - ee_pos
+            #     obj_rot = rotations.mat2euler(self.sim.data.get_site_xmat('objSite_'+str(i)))
+            #     # velocities
+            #     dt = self.sim.nsubsteps * self.sim.model.opt.timestep # same as self.dt
+            #     obj_velp = self.sim.data.get_site_xvelp('objSite_'+str(i)) * dt
+            #     obj_velr = self.sim.data.get_site_xvelr('objSite_'+str(i)) * dt
+            #     obj_rel_pos = obj_pos - ee_pos
 
-                object_pos_list.append(obj_pos)
-                object_rot_list.append(obj_rot)
-                object_velp_list.append(obj_velp)
-                object_velr_list.append(obj_velr)
-                object_rel_pos_list.append(obj_rel_pos)
+            #     object_pos_list.append(obj_pos)
+            #     object_rot_list.append(obj_rot)
+            #     object_velp_list.append(obj_velp)
+            #     object_velr_list.append(obj_velr)
+            #     object_rel_pos_list.append(obj_rel_pos)
             
-            obj_pos = np.stack(object_pos_list, axis =0) #[num_obj, dim]
-            obj_rot = np.stack(object_rot_list, axis =0) #[num_obj, dim]
-            obj_velp = np.stack(object_velp_list, axis =0) #[num_obj, dim]
-            obj_velr = np.stack(object_velr_list, axis =0) #[num_obj, dim]
-            obj_rel_pos = np.stack(object_rel_pos_list, axis =0) #[num_obj, dim]
-
-
-
+            # obj_pos = np.stack(object_pos_list, axis =0) #[num_obj, dim]
+            # obj_rot = np.stack(object_rot_list, axis =0) #[num_obj, dim]
+            # obj_velp = np.stack(object_velp_list, axis =0) #[num_obj, dim]
+            # obj_velr = np.stack(object_velr_list, axis =0) #[num_obj, dim]
+            # obj_rel_pos = np.stack(object_rel_pos_list, axis =0) #[num_obj, dim]
         else :
             raise NotImplementedError            
+        if self.sequential_rl:
+            self.object_pos = obj_pos.copy()
+
         gripper_state = gripperpos
 
 
@@ -727,13 +968,19 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectRealEnv(DSCHOSingleUR3GoalRealEnv):
             if self.previous_ee_pos is None:
                 ee_velp = np.zeros_like(ee_pos)
             else:
-                ee_velp = (ee_pos - self.previous_ee_pos)/dt                
+                if self.custom_processed_vel:
+                    ee_velp = (ee_pos - self.previous_ee_pos)/dt*0
+                else:
+                    ee_velp = (ee_pos - self.previous_ee_pos)/dt                
 
 
             if self.previous_obj_pos is None:
                 obj_velp = np.zeros_like(obj_pos)
             else:
-                obj_velp = (obj_pos - self.previous_obj_pos)/dt
+                if self.custom_processed_vel:
+                    obj_velp = (obj_pos - self.previous_obj_pos)/dt*0
+                else:
+                    obj_velp = (obj_pos - self.previous_obj_pos)/dt
 
             self.previous_ee_pos = ee_pos.copy()
             self.previous_obj_pos = obj_pos.copy()
@@ -760,36 +1007,78 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectRealEnv(DSCHOSingleUR3GoalRealEnv):
             if not self.has_object:
                 raise NotImplementedError()                
             else:
+                print('object idx : ', self.goal_object_idx)
                 achieved_goal = obj_pos[self.goal_object_idx]
-            
-            
+        
+        if self.sequential_rl:
+            if self._state_goal is None:
+                self._state_goal = np.concatenate(self.predefined_sequential_goal_list)
+            desired_goal = np.reshape(self._state_goal.copy(), (self.num_objects, -1)) #[num_obj, dim]
+            desired_goal = desired_goal[self.goal_object_idx]            
+        else:
+            if self._state_goal is None:
+                self._state_goal = np.zeros(3)
+            desired_goal = self._state_goal.copy()
+
+
         return {
             'observation' : obs.copy(),
             'achieved_goal' : achieved_goal.copy(),
-            'desired_goal' : self._state_goal.copy(), 
+            'desired_goal' : desired_goal.copy(), 
         }    
 
     def sample_goal(self, full_state_goal):
         if full_state_goal:
             raise NotImplementedError
         else:
-            goal = super().sample_goal(full_state_goal)
-            if self.goal_weight_is_set:
-                self.goal_object_idx = np.argmax(self.goal_weight)
-                self.goal_weight_is_set = False
+            if self.sequential_rl:
+                goal = np.concatenate(self.predefined_sequential_goal_list)
+                print(goal)
+                # time.sleep(3)
             else:
-                self.goal_object_idx = np.random.randint(self.num_objects)
-
+                goal = super().sample_goal(full_state_goal)
+                if self.goal_weight_is_set:
+                    self.goal_object_idx = np.argmax(self.goal_weight)
+                    self.goal_weight_is_set = False
+                else:
+                    self.goal_object_idx = np.random.randint(self.num_objects)
+            return goal
     def set_goal_weight(self, goal_weight):
         self.goal_weight = goal_weight
         self.goal_weight_is_set = True
 
 
-    
+    def get_weight_for_multigoal_rl(self):
+        # obs_dict = self._get_obs()
+        # observation = obs_dict['observation']
+        
+        object_pos = self.object_pos.copy()
+                
+        # Assume object_pos : [num_obj, dim]
+        desired_goal = self._state_goal.copy() #[num_obj*dim]
+        desired_goal = np.reshape(desired_goal, (self.num_objects, -1)) #[num_obj, dim]
+        
+        # 첫번째부터 순서대로 desired goal에 도달했는지 보고서 도달안한 obj 중 제일 앞순서대로 w 설정하게끔.
+        # 즉, Multi Goal HRL에서 w를 내뱉는 high level policy를 naive하게 대체하는 역할
+        weight = np.zeros(self.weight_dim)
+        for idx, obj_pos, goal in zip(range(self.num_objects), object_pos, desired_goal):
+            d = np.linalg.norm(obj_pos-goal, axis =-1)            
+            if (d > self.distance_threshold):
+                weight[idx] = 1.0
+                self.goal_object_idx = idx
+                break
+        if (weight==np.zeros(self.weight_dim)).all(): # all goals are achieved
+            weight = np.zeros(self.weight_dim)
+            # 그냥 일단은 마지막 object기준으로 남겨두기
+            idx = self.num_objects-1
+            weight[idx] = 1.0
+            self.goal_object_idx = idx
+            # weight = None
+
+        return weight
 
 class DSCHOSingleUR3PickAndPlaceRealEnv(DSCHOSingleUR3GoalRealEnv):
-    def __init__(self, *args, **kwargs):
-        
+    def __init__(self, *args, **kwargs):        
         super().__init__(has_object=True, block_gripper=False, task='pickandplace', *args, **kwargs)
 
 class DSCHOSingleUR3PushRealEnv(DSCHOSingleUR3GoalRealEnv):
@@ -813,22 +1102,23 @@ class DSCHOSingleUR3DrawerOpenRealEnv(DSCHOSingleUR3GoalRealEnv):
 
 
 def get_default_env_kwargs():
-    host_ip_right = '192.168.5.102'
-    host_ip_left = '192.168.5.101'
+    # host_ip_right = '192.168.5.102'
+    # host_ip_left = '192.168.5.101'
+    host_ip_right = '192.168.2.4' # assume optitrack wifi
     env_kwargs = dict(
-        host_ip=host_ip_left, # But which hand should be right in current simulation xml setting! (In sim, only right arm is used as upright)
-        rate=20, # 너무 느리면 25Hz정도까지 늘려보기                  
+        host_ip=host_ip_right, # But which hand should be right in current simulation xml setting! (In sim, only right arm is used as upright)
+        rate=15, # 너무 느리면 20Hz정도까지 늘려보기                  
         #################### env kwargs
-        sparse_reward = False,               
+        sparse_reward = True,               
         trigonometry_observation = False,         
         full_state_goal = False,
         reward_by_ee = False,                                 
         reward_success_criterion='ee_pos',
         distance_threshold = 0.05,
-        initMode='vertical',
+        # initMode='vertical',
         which_hand='right', 
         so3_constraint ='vertical_side',
-        task = 'pickandplace',
+        # task = 'pickandplace',
         observation_type='ee_object_pos_w_grip_custom_vel', #'joint_q', #'ee_object_object', #'ee_object_all'
         init_qpos_type = 'upright',
         predefined_goal = None,
@@ -838,18 +1128,98 @@ def get_default_env_kwargs():
 def get_default_wrapper_kwargs(env):
     # real은 PID, scale factor등은 필요가없음(HW built in이니까)
     return dict(env=env,
+                gripper_action = True,
                 g_control_type='move_gripper_position',
-                q_control_type='speedj',
+                q_control_type= 'speedj',
+                action_downscale=0.01, # something wrong... (waving motion) -> servoj? or smaller scale or lower Hz?
                 speedj_args = {'a': 5, 't': 2/env.rate._freq, 'wait': False},
                 servoj_args = {'t': 2/env.rate._freq, 'wait': False},
                 g_control_args = {'wait' : False},
+                so3_constraint='vertical_side', 
                 )
 
 def test_single_ur3_real():
 
     env_kwargs = get_default_env_kwargs()
+    rate = 10
+    env_kwargs.update(dict(rate = rate))
+
+    from gym_custom.envs.real.optitrack_subscriber import OptitrackSubscriber
+    env_kwargs.update({'optitrack_subscriber' : OptitrackSubscriber(rate=rate, id_list = ['ur3_table', 'block_5cm_red'])})
+    time.sleep(1) # wait for optitrack init
     env = DSCHOSingleUR3PickAndPlaceRealEnv(**env_kwargs)
-        
+    # time.sleep(1) # wait for optitrack inittest_single_ur3_real
+    # env.set_initial_joint_pos('current')
+    # env.set_initial_gripper_pos('current')
+    
+    # NOTE : action downscale : 0.001, 50Hz -> maximum 5cm per second
+    wrapper_kwargs = get_default_wrapper_kwargs(env)
+    q_control_type_list = ['speedj', 'servoj']
+    q_control_type = q_control_type_list[0]
+    if q_control_type=='speedj': # tested with rate 10, action downscale 0.01 is stable, 0.015 is so so.. / rate 15, action downscale 0.01 (sometimes break)
+        wrapper_kwargs.update({'action_downscale' : 0.01, 'speedj_args' : {'a': 5, 't': 2/env.rate._freq, 'wait': False}, 
+                                'multi_step' : 1, 'q_control_type' : 'speedj',
+                                })     
+    elif q_control_type=='servoj': # tested with rate 10, action downscale 0.03 is stable, 0.05 is so so.. & slower than speedj
+        wrapper_kwargs.update({'action_downscale' : 0.03, 'servoj_args' : {'t': 2/env.rate._freq, 'wait': False},
+                                'multi_step' : 1, 'q_control_type' : 'servoj',  
+                                })     
+
+    env = EndEffectorPositionControlSingleWrapperReal(**wrapper_kwargs)
+    
+    
+    print('env init done')
+    # if prompt_yes_or_no('reset model would use movej to init qpos, where endeffector pos is \r\n right: %s \r\n left: %s \r\n?'
+    #     %(self.get_endeff_pos('right'), self.get_endeff_pos('left'))) is False:
+    #     print('exiting program!')
+    #     sys.exit()
+
+    # NOTE : Should check initial qpos & end effector pos
+
+    obs = env.reset()
+    print('reset, obs : {}'.format(obs))
+    if prompt_yes_or_no('moving to x axis, while closing gripper?') is False:
+        print('exiting program!')
+        sys.exit()
+    # if env.rate._freq==20 :
+    #     num_iter = 20 # 20Hz : 1s 
+    # elif env.rate._freq==50 :
+    #     num_iter = 50 # 50Hz : 1s 
+    num_iter = env.rate._freq*2
+    for i in range(num_iter): 
+        action = np.array([1.0, 0, 0, 1.0]) # moving x axis, closing gripper
+        next_obs, reward, done, info = env.step(action)
+        obs = next_obs
+        ee_pos, obj_pos, obj_rel_pos, gripper_state, obj_velp, ee_velp, _ = np.split(obs['observation'], [3,6,9,11,14,17], axis =-1)
+        print('ee pos : {} obj pos : {}, gripper state : {}, obj vel : {}, ee vel : {}'.format(ee_pos, obj_pos, gripper_state, obj_velp, ee_velp))
+    time.sleep(3)
+
+    if prompt_yes_or_no('moving to -x axis, while opening gripper?') is False:
+        print('exiting program!')
+        sys.exit()
+    for i in range(num_iter):
+        action = np.array([-1.0, 0, 0, -1.0]) # moving x axis, opening gripper
+        next_obs, reward, done, info = env.step(action)
+        obs = next_obs
+        ee_pos, obj_pos, obj_rel_pos, gripper_state, obj_velp, ee_velp, _ = np.split(obs['observation'], [3,6,9,11,14,17], axis =-1)
+        print('ee pos : {} obj pos : {}, gripper state : {}, obj vel : {}, ee vel : {}'.format(ee_pos, obj_pos, gripper_state, obj_velp, ee_velp))
+    time.sleep(3)
+    
+    print('done')
+
+
+
+
+def test_single_ur3_real_for_calibration_optitrack():
+    rate = 15
+    env_kwargs = get_default_env_kwargs()
+    env_kwargs.update(dict(rate = rate))
+    from gym_custom.envs.real.optitrack_subscriber import OptitrackSubscriber
+    env_kwargs.update({'optitrack_subscriber' : OptitrackSubscriber(rate=rate, id_list = ['ur3_table', 'block_5cm_red'])})
+    time.sleep(1)
+    env = DSCHOSingleUR3PickAndPlaceRealEnv(**env_kwargs)
+    env.set_initial_joint_pos('current')
+    env.set_initial_gripper_pos('current')
     wrapper_kwargs = get_default_wrapper_kwargs(env)     
     env = EndEffectorPositionControlSingleWrapperReal(**wrapper_kwargs)
     
@@ -864,30 +1234,54 @@ def test_single_ur3_real():
 
     obs = env.reset()
     print('reset, obs : {}'.format(obs))
-    
-    for i in range(10): # 20Hz 기준 0.5초
-        action = np.array([1.0, 0, 0, 1.0]) # moving x axis, closing gripper
-        next_obs, reward, done, info = env.step(action)
-        obs = next_obs
-        print('obs : ', obs)
-    time.sleep(3)
+    if prompt_yes_or_no('prepared with freedrive mode for optitrack calibration?') is False:
+        print('exiting program!')
+        sys.exit()
 
-    for i in range(10):
-        action = np.array([-1.0, 0, 0, -1.0]) # moving x axis, closing gripper
-        next_obs, reward, done, info = env.step(action)
-        obs = next_obs
-        print('obs : ', obs)
-    time.sleep(3)
+    for i in range(50):
+        obs = env.get_calibration_info(name='block_5cm_red')
+        # ee_pos, obj_pos, obj_rel_pos, gripper_state, obj_velp, ee_velp, _ = np.split(obs['observation'], [3,6,9,11,14,17], axis =-1)
+        ee_pos, obj_pos, _ = np.split(obs, [3,6], axis =-1)
+        print('ee pos : {} obj pos : {}'.format(ee_pos, obj_pos))
+        time.sleep(1)
+
+    # for i in range(10): # 20Hz 기준 0.5초
+    #     action = np.array([1.0, 0, 0, 1.0]) # moving x axis, closing gripper
+    #     next_obs, reward, done, info = env.step(action)
+    #     obs = next_obs
+    #     ee_pos, obj_pos, obj_rel_pos, gripper_state, obj_velp, ee_velp, _ = np.split(obs['observation'], [3,6,9,11,14,17], axis =-1)
+    #     print('ee pos : {} obj pos : {}, gripper state : {}, obj vel : {}, ee vel : {}'.format(ee_pos, obj_pos, gripper_state, obj_velp, ee_velp))
+    # time.sleep(3)
+
+    # if prompt_yes_or_no('moving to -x axis, while opening gripper?') is False:
+    #     print('exiting program!')
+    #     sys.exit()
+    # for i in range(10):
+    #     action = np.array([-1.0, 0, 0, -1.0]) # moving x axis, opening gripper
+    #     next_obs, reward, done, info = env.step(action)
+    #     obs = next_obs
+    #     ee_pos, obj_pos, obj_rel_pos, gripper_state, obj_velp, ee_velp, _ = np.split(obs['observation'], [3,6,9,11,14,17], axis =-1)
+    #     print('ee pos : {} obj pos : {}, gripper state : {}, obj vel : {}, ee vel : {}'.format(ee_pos, obj_pos, gripper_state, obj_velp, ee_velp))
+    # time.sleep(3)
     
     print('done')
+
 
 
 def test_single_ur3_real_pickandplace():
 
     env_kwargs = get_default_env_kwargs()
+    rate = 10
+    env_kwargs.update(dict(rate = rate))
+    from gym_custom.envs.real.optitrack_subscriber import OptitrackSubscriber
+    env_kwargs.update({'optitrack_subscriber' : OptitrackSubscriber(rate=rate, id_list = ['ur3_table', 'block_5cm_red'])})
+    time.sleep(1)
     env = DSCHOSingleUR3PickAndPlaceRealEnv(**env_kwargs)
         
     wrapper_kwargs = get_default_wrapper_kwargs(env)     
+    wrapper_kwargs.update({'action_downscale' : 0.01, 'speedj_args' : {'a': 5, 't': 2/env.rate._freq, 'wait': False}, 
+                                'multi_step' : 1, 'q_control_type' : 'speedj',
+                                })    
     env = EndEffectorPositionControlSingleWrapperReal(**wrapper_kwargs)
     
     
@@ -904,34 +1298,46 @@ def test_single_ur3_real_pickandplace():
     print('reset, obs : {}'.format(obs))
     
     print('NOTE : You\'d better use BaselineHERGoalEnvWrapper for conveniency in GCRL')
-    
+    time.sleep(1)
     pure_obs = obs['observation']
     achieved_goal = obs['achieved_goal']
-    desired_goal = obs['desired_goal']
+    # desired_goal = obs['desired_goal']
+    # desired_goal = achieved_goal + np.array([0,0, 0.1])
+    desired_goal = np.array([-0.1, -0.3, 0.78])
     ee_pos = pure_obs[:3]
     obj_pos = pure_obs[3:6]
-    assert obj_pos==achieved_goal
+    assert (obj_pos==achieved_goal).all()
     use_sleep = False
-    duration = 1.0  #1초씩 움직임
+    duration = 4.0  #4초씩 움직임
     dt = env.dt
+    act_scale = 10
     for i in range(5):
         for t in range(int(duration/dt)):
-            if i ==0: 
-                action_xyz = np.tanh(obj_pos+np.array([0,0,0.1])- ee_pos)
+            if i ==0 :
+                action_xyz = np.tanh(act_scale*(obj_pos+np.array([0,0,0.1])- ee_pos))
                 action = np.concatenate([action_xyz, np.array([-1.0])], axis =-1)
             elif i ==1: 
-                action_xyz = np.tanh(obj_pos - ee_pos)
+                action_xyz = np.tanh(act_scale*(obj_pos - ee_pos))
                 action = np.concatenate([action_xyz, np.array([-1.0])], axis =-1)
             elif i ==2: 
-                action_xyz = np.tanh(obj_pos - ee_pos)
+                action_xyz = np.tanh(act_scale*(obj_pos - ee_pos))
                 action = np.concatenate([action_xyz, np.array([1.0])], axis =-1)
-            elif i ==3 or i ==4: 
-                action_xyz = np.tanh(desired_goal - ee_pos)
+            elif i ==3: 
+                action_xyz = np.tanh(act_scale*(desired_goal - ee_pos))
                 action = np.concatenate([action_xyz, np.array([1.0])], axis =-1)
-            
-            next_obs, reward, done, info = env.step(action)
+            elif i ==4: 
+                action_xyz = np.tanh(act_scale*(desired_goal +np.array([0, 0, 0.1])- ee_pos))
+                action = np.concatenate([action_xyz, np.array([-1.0])], axis =-1)
 
-            print('step : {} ee pos ; {} obj pos : {} rew : {}'.format(t, ee_pos, obj_pos, reward))
+            if ee_pos[2] < 0.77:
+                action[2] = np.clip(action[2], 0, 1) # to prevent collision with table
+
+            next_obs, reward, done, info = env.step(action)
+            obs = next_obs
+            pure_obs = obs['observation']
+            ee_pos = pure_obs[:3]
+            obj_pos = pure_obs[3:6]
+            print('step : {} act : {} ee pos ; {} obj pos : {} goal : {}'.format(t, action, ee_pos, obj_pos, desired_goal))
         
         if use_sleep:
             time.sleep(1)
@@ -942,6 +1348,9 @@ def test_single_ur3_real_pickandplace():
     print('done')
 
 
+
+
 if __name__ == "__main__":
-    test_single_ur3_real()
+    # test_single_ur3_real()
+    test_single_ur3_real_for_calibration_optitrack()
     # test_single_ur3_real_pickandplace()

@@ -92,6 +92,11 @@ class UrScriptExt(URBasic.urScript.UrScript):
     def get_gripper_position(self):
         return self.robotiq_gripper.get_current_position()
 
+    def get_gripper_min_position(self):
+        return self.robotiq_gripper.get_min_position()
+    def get_gripper_max_position(self):
+        return self.robotiq_gripper.get_max_position()
+
     def close(self):
         self.print_actual_tcp_pose()
         self.print_actual_joint_positions()

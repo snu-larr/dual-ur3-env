@@ -173,3 +173,9 @@ class URScriptInterface(object):
         # TODO: dscho
         return np.array([0.0])
         # raise NotImplementedError()
+
+
+    def get_gripper_min_position(self):
+        return self.comm.get_gripper_min_position()
+    def get_gripper_max_position(self):
+        return self.comm.get_gripper_max_position()
