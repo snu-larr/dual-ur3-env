@@ -11,7 +11,7 @@ from gym_custom.envs.custom.ur_utils import URScriptWrapper, URScriptWrapper_Dua
 from gym_custom import Wrapper
 from gym_custom.envs.custom.ur_utils import SO3Constraint, UprightConstraint, NoConstraint
 # from gym_custom.envs.custom.constraint.pose_constraint import SO3Constraint, UprightConstraint, NoConstraint
-import tensorflow as tf
+# import tensorflow as tf
 import joblib
 import time
 color2num = dict(
@@ -1611,14 +1611,14 @@ class DSCHOSingleUR3ReachEnv(DSCHODualUR3Env):
         else :
             raise NotImplementedError
 
-    def convert_goal_for_reward_tf(self, goals):
-        #Caution : Assume batch data is given.
-        if not self.full_state_goal:
-            return goals
-        elif self.reward_by_ee:
-            return goals[:, -3:]
-        else: #exclude qvel in reward computation in outer wrapper
-            return tf.concat([goals[:, :self.obs_nqpos], goals[:, -3:]], axis =-1)
+    # def convert_goal_for_reward_tf(self, goals):
+    #     #Caution : Assume batch data is given.
+    #     if not self.full_state_goal:
+    #         return goals
+    #     elif self.reward_by_ee:
+    #         return goals[:, -3:]
+    #     else: #exclude qvel in reward computation in outer wrapper
+    #         return tf.concat([goals[:, :self.obs_nqpos], goals[:, -3:]], axis =-1)
 
     def _is_success(self, achieved_goal, desired_goal):
         if self.reward_success_criterion=='full_state':

@@ -3505,10 +3505,11 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     
     if make_video:
         import os
-        import tensorflow as tf
+        # import tensorflow as tf
         assert not render
         cur_vid_dir = os.path.join('./', 'example_video')
-        tf.io.gfile.makedirs(cur_vid_dir)
+        # tf.io.gfile.makedirs(cur_vid_dir)
+        os.makedirs(cur_vid_dir, exist_ok=True)
         from dscho_util.video_wrapper import VideoWrapper        
         full_vid_name = 'rollout_'+env_id
         ur3_cam = True
@@ -3678,9 +3679,10 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     if plot:
         import matplotlib.pyplot as plt
         import os
-        import tensorflow as tf
+        # import tensorflow as tf
         cur_vid_dir = os.path.join('./', 'example_video')
-        tf.io.gfile.makedirs(cur_vid_dir)
+        # tf.io.gfile.makedirs(cur_vid_dir)
+        os.makedirs(cur_vid_dir, exist_ok=True)
         for i in range(n_episodes):
             fig = plt.figure()
             ax = fig.add_subplot(111)

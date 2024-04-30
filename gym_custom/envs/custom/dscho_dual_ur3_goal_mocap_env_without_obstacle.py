@@ -13,7 +13,7 @@ from gym_custom.envs.custom.ur_utils import URScriptWrapper, URScriptWrapper_Dua
 from gym_custom import Wrapper
 from gym_custom.envs.custom.ur_utils import SO3Constraint, UprightConstraint, NoConstraint
 # from gym_custom.envs.custom.constraint.pose_constraint import SO3Constraint, UprightConstraint, NoConstraint
-import tensorflow as tf
+# import tensorflow as tf
 import pickle
 import joblib
 import time
@@ -1091,7 +1091,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         floor_z_height = np.array([0.73]) # xml보니 책상높이가 0.73?
         goal_obj_floor_low = np.concatenate([goal_obj_low[:-1], floor_z_height], axis =-1)
         goal_obj_floor_high = np.concatenate([goal_obj_high[:-1], floor_z_height], axis =-1)
-        self.goal_obj_floor_space = Box(low = goal_obj_floor_low, high = goal_obj_floor_high, dtype=np.float32)
+        self.goal_obj_floor_space = Box(low = goal_obj_floor_low, high = goal_obj_floor_high, dtype=np.float32) # currently, not used
 
 
         self._state_goal = self.sample_goal(self.full_state_goal)
@@ -1116,7 +1116,8 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         if full_state_goal:
             raise NotImplementedError
         elif self.fix_goal:    
-            goal = np.zeros(3)
+            # goal = np.zeros(3)
+            goal = np.array([-0.2, -0.4, self.table_z_offset])
         else :
             if not self.has_object: # reach
                 goal_ee_pos = np.random.uniform(
@@ -1219,7 +1220,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         # randomly reset the initial position of an object
         if self.has_object:
             if self.fix_init_obj:
-                object_pos = np.array([0.05, -0.4, self.table_z_offset])
+                object_pos = np.array([0.2, -0.4, self.table_z_offset]) + np.random.normal(loc=np.zeros(3), scale=0.02*np.ones(3))
                 object_qpos = self.sim.data.get_joint_qpos('objjoint')
                 assert object_qpos.shape == (7,)
                 object_qpos[:3] = object_pos
@@ -1631,14 +1632,14 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         else :
             raise NotImplementedError
 
-    def convert_goal_for_reward_tf(self, goals): #needed for TDMWrapper
-        #Caution : Assume batch data is given.
-        if not self.full_state_goal:
-            return goals
-        elif self.reward_by_ee:
-            return goals[:, -3:]
-        else: #exclude qvel in reward computation in outer wrapper
-            return tf.concat([goals[:, :self.obs_nqpos], goals[:, -3:]], axis =-1)
+    # def convert_goal_for_reward_tf(self, goals): #needed for TDMWrapper
+    #     #Caution : Assume batch data is given.
+    #     if not self.full_state_goal:
+    #         return goals
+    #     elif self.reward_by_ee:
+    #         return goals[:, -3:]
+    #     else: #exclude qvel in reward computation in outer wrapper
+    #         return tf.concat([goals[:, :self.obs_nqpos], goals[:, -3:]], axis =-1)
 
     def _is_success(self, achieved_goal, desired_goal):
         if self.reward_success_criterion=='full_state':
@@ -1972,6 +1973,13 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
                     # goal_obj_high = np.array([0.15, -0.3, 0.95])
                     if self.num_objects==1:
                         coords = np.random.uniform(np.array([x_min, y_min]), np.array([x_max, y_max]), size = [1,2])
+                    elif self.num_objects==4:
+                        print('custom obj init reset for 4 obj')
+                        coords = np.array([[0.15, -0.33],
+                                           [0.15, -0.41],
+                                           [-0.15, -0.33],
+                                           [-0.15, -0.41]])
+                        coords+=np.random.uniform(low=[-0.05, -0.02], high=[0.05,0.02], size = (4,2))
                     else:
                         coords = generate_points_with_min_distance(n=self.num_objects, shape=(1,1), min_dist=0.05,\
                             x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
