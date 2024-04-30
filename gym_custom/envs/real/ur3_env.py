@@ -16,9 +16,11 @@ class UR3RealEnv(gym_custom.Env):
         self.interface = URScriptInterface(host_ip)
         
         # dscho mod
-        self._define_class_variables()
+        self.init_qpos_type = 'upright'
         self.dt = 1/self.rate._freq
-
+        self._define_class_variables()
+        
+        
         # UR3 (6DOF), 2F-85 gripper (1DOF)
         # self._init_qpos = np.zeros([6])
         # self._init_qvel = np.zeros([6])
@@ -155,10 +157,8 @@ class UR3RealEnv(gym_custom.Env):
         self.kinematics_params['ub'] = np.array([2*np.pi for _ in range(6)])
         self.kinematics_params['lb'] = np.array([-2*np.pi for _ in range(6)])
         
-        if self.init_qpos_type=='upright':
-            path_to_pkl = os.path.join(os.path.dirname(__file__), 'ur/ur3_kinematics_params.pkl')
-        else: # dual arm posture params       
-            path_to_pkl = os.path.join(os.path.dirname(__file__), 'ur/dual_ur3_kinematics_params.pkl')
+        
+        path_to_pkl = os.path.join(os.path.dirname(__file__), 'ur/dual_ur3_kinematics_params.pkl')
 
         if os.path.isfile(path_to_pkl):
             kinematics_params_from_pkl = pickle.load(open(path_to_pkl, 'rb'))
@@ -240,18 +240,12 @@ class UR3RealEnv(gym_custom.Env):
         inverse kinematics with forward_kinematics_DH() and _jacobian_DH()
         '''
         # Set initial guess
-        if arm == 'right':
-            if type(q_init).__name__ == 'ndarray': q = q_init.copy()
-            elif q_init == 'current': q = self.interface_right.get_joint_positions()
-            elif q_init == 'zero': q = np.zeros([self.ur3_nqpos])
-            else: raise ValueError("q_init must be one of the following: ['current', 'zero', numpy.ndarray]")
-        elif arm == 'left':
-            if type(q_init).__name__ == 'ndarray': q = q_init.copy()
-            elif q_init == 'current': q = self.interface_left.get_joint_positions()
-            elif q_init == 'zero': q = np.zeros([self.ur3_nqpos])
-            else: raise ValueError("q_init must be one of the following: ['current', 'zero', numpy.ndarray]")
-        else:
-            raise ValueError('Invalid arm type!')
+        # if arm == 'right':
+        if type(q_init).__name__ == 'ndarray': q = q_init.copy()
+        elif q_init == 'current': q = self.interface.get_joint_positions()
+        elif q_init == 'zero': q = np.zeros([self.ur3_nqpos])
+        else: raise ValueError("q_init must be one of the following: ['current', 'zero', numpy.ndarray]")
+        
         
         SO3, x, _ = self.forward_kinematics_ee(q, arm)
         jac = self._jacobian_DH(q, arm)
@@ -534,5 +528,6 @@ def gripper_check(host_ip):
 if __name__ == "__main__":
     # sanity_check(host_ip='192.168.5.101')
     # gripper_check(host_ip='192.168.5.101')
-    servoj_speedj_example(host_ip='192.168.5.101', rate=20)
+    # servoj_speedj_example(host_ip='192.168.5.101', rate=20)
+    servoj_speedj_example(host_ip='192.168.2.4', rate=20)
     pass
