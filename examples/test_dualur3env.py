@@ -3324,13 +3324,17 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     g_control_type='move_gripper_force'
     gripper_action = True
     
-    env_id = 'dscho-single-ur3-mocap-pickandplace-v1'
+    # env_id = 'dscho-single-ur3-mocap-pickandplace-v1'
     # env_id = 'dscho-single-ur3-mocap-pickandplace-wall-v1'
     # env_id = 'dscho-single-ur3-mocap-pickandplace-multiobject-v1'
     # env_id = 'dscho-single-ur3-mocap-door-v1'
     # env_id = 'dscho-single-ur3-mocap-button-v1'
     # env_id = 'dscho-single-ur3-mocap-drawer-v1'
     # env_id = 'dscho-single-ur3-mocap-reach-v1'
+    
+    # dscho added for ARL
+    env_id = 'dscho-single-ur3-mocap-peg-v1'
+    
     # make_video = False
     which_hand = 'right'
     from gym_custom.envs.custom.dscho_dual_ur3_goal_mocap_env_without_obstacle import DSCHOSingleUR3PickAndPlaceEnv, MocapSingleWrapper
@@ -3371,6 +3375,9 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
         elif 'wall' in env_id:
             env_kwargs = dict(xml_filename= 'dscho_dual_ur3_upright_mocap_object_wall_flat_gripper.xml' if upright_ver else None,                            
                             )
+        elif 'peg' in env_id:
+            env_kwargs = dict(xml_filename= 'dscho_dual_ur3_upright_mocap_peg_flat_gripper.xml' if upright_ver else None,                            
+                            )
         else:
             env_kwargs = dict(xml_filename= 'dscho_dual_ur3_upright_mocap_object_flat_gripper.xml' if upright_ver else 'dscho_dual_ur3_mocap_object_flat_gripper.xml',
                             )
@@ -3378,11 +3385,11 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
         env_kwargs.update(dict(initMode = None, 
                             sparse_reward = True, 
                             which_hand=which_hand,
-                            observation_type = 'ee_object_pos_w_grip_delta_pos',
+                            observation_type = 'ee_object_pos_w_grip_custom_vel', # 'ee_object_pos_w_grip_delta_pos',
                             trigonometry_observation = False,
                             so3_constraint='vertical_side', #사실상 의미x. so3 error calculation에만 사용
                             flat_gripper = True,                             
-                            custom_frame_skip = 10, # 0.005 * 20 =0.1s per step
+                            custom_frame_skip = 20, # if 20, 0.005 * 20 =0.1s per step
                             ))
     env = gym_custom.make(env_id , **env_kwargs)
     
@@ -3423,6 +3430,17 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
     else:
         pass
     obs = env.reset()
+
+
+    # debug
+    from PIL import Image
+    img = env.render(mode='rgb_array', camera_name='topview') # [h, w, c]
+    Image.fromarray(img).save('./example_video/reset_obs.png')
+    sys.exit()
+
+
+
+
     r_joint_qpos = env.sim.data.get_joint_qpos('right_gripper:r_gripper_finger_joint')
     l_joint_qpos = env.sim.data.get_joint_qpos('right_gripper:l_gripper_finger_joint')
     print('r joint q : {} l joint q : {}'.format(r_joint_qpos, l_joint_qpos))
@@ -3699,6 +3717,187 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
         while True:
             env.render()
 
+
+
+
+
+def dscho_mocap_single_ur3_peg_for_ARL_test(env_type='sim', render=False, make_video = False):
+    list_of_env_types = ['sim', 'real']
+
+    q_control_type = 'speedj'
+    if q_control_type == 'servoj':
+        PID_gains = {'servoj': {'P': 1.0, 'I': 0.5, 'D': 0.2}}
+    elif q_control_type == 'speedj':
+        PID_gains = {'speedj': {'P': 0.2, 'I': 10.0}} # was 0.2, 5.0
+    ur3_scale_factor = np.array([50.0, 50.0, 25.0, 10.0, 10.0, 10.0])*np.array([1.0, 1.0, 1.0, 2.5, 2.5, 2.5])
+    gripper_scale_factor = np.array([1.0])
+    g_control_type='move_gripper_force'
+    gripper_action = True
+    
+    
+    # dscho added for ARL
+    env_id = 'dscho-single-ur3-mocap-peg-v1'
+    
+    # make_video = False
+    which_hand = 'right'
+    from gym_custom.envs.custom.dscho_dual_ur3_goal_mocap_env_without_obstacle import MocapSingleWrapper
+    
+    upright_ver = True
+
+    
+    if 'peg' in env_id:
+        env_kwargs = dict(xml_filename= 'dscho_dual_ur3_upright_mocap_peg_flat_gripper.xml' if upright_ver else None,                            
+                        )
+    else:
+        raise NotImplementedError
+    
+    env_kwargs.update(dict(initMode = None, 
+                        sparse_reward = True, 
+                        which_hand=which_hand,
+                        observation_type = 'ee_object_pos_w_grip_custom_vel', # 'ee_object_pos_w_grip_delta_pos',
+                        trigonometry_observation = False,
+                        so3_constraint='vertical_side', #사실상 의미x. so3 error calculation에만 사용
+                        flat_gripper = True,                             
+                        custom_frame_skip = 20, # if 20, 0.005 * 20 =0.1s per step
+                        ))
+    env = gym_custom.make(env_id , **env_kwargs)
+   
+    multi_step=1 # 1step : 0.005s -> framsskip 10 곱하면 20Hz (실제로 multi step만큼 밟는건 아니지만 dt를 위해서?(dt곱해진 게 state에 들어가니?))
+    env = MocapSingleWrapper(env=env,
+                            # q_control_type=q_control_type,
+                            # g_control_type=g_control_type,
+                            multi_step=multi_step,
+                            gripper_action=gripper_action,
+                            PID_gains=PID_gains,
+                            ur3_scale_factor=ur3_scale_factor,
+                            gripper_scale_factor=gripper_scale_factor,
+                            # so3_constraint='vertical_side',
+                            action_downscale=0.01, # Assuming tanh action,
+                            gripper_force_scale=1, # 1
+                            )
+    
+
+    dt = env.dt
+    
+    print('dt : ', dt)
+    print('Mocap env는 어처피 한 스텝안에 그만큼 움직이기만 하면 되는거라 굳이 dt가 의미없음. 즉 action scale이 커도 실제 움직일떄 긴 타임스텝동안 움직이면 되니까 문제 x!')
+    
+
+    # debug
+    # from PIL import Image
+    # img = env.render(mode='rgb_array', camera_name='topview') # [h, w, c]
+    # Image.fromarray(img).save('./example_video/reset_obs.png')
+    
+
+    # pick and place test    
+    if make_video:
+        import os
+        # import tensorflow as tf
+        assert not render
+        cur_vid_dir = os.path.join('./', 'example_video')
+        # tf.io.gfile.makedirs(cur_vid_dir)
+        os.makedirs(cur_vid_dir, exist_ok=True)
+        from dscho_util.video_wrapper import VideoWrapper        
+        full_vid_name = 'rollout_'+env_id
+        ur3_cam = True
+        custom_env = True
+        env = VideoWrapper(env, base_path=cur_vid_dir, base_name=full_vid_name, ur3_cam=ur3_cam, custom_env = custom_env)
+
+
+    duration = 2 # in seconds
+    single = True
+    action_scale = 30 # 빠르게 움직이고 싶으면 action downscale or action scale조절(NOTE : action scale은 원래 학습의 영역임)
+    grip_scale = 1
+    n_episodes = 1
+    
+    observations =[]
+
+    for episode in range(n_episodes):
+        obs = env.reset()
+        desired_goal =obs['desired_goal']
+        current_right_ee_pos = env.get_endeff_pos('right')
+        
+        grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
+        
+        print('reset, o pos : {} o rot : {} '.format(object_pos, object_rot))
+        
+                
+        obs_list =[]
+        obs_list.append(np.concatenate([obs['observation'], obs['desired_goal']], axis =-1))
+        for i in range(2):
+            for t in range(int(duration/dt)):
+                if i==0 :
+                    action_xyz = desired_goal+ np.array([0.1,0,0])-current_right_ee_pos
+                    action_xyz = np.tanh(action_scale*action_xyz)
+                    action_grip = grip_scale*np.array([-1])
+                    action = np.concatenate([action_xyz, action_grip], axis =-1) # open
+                    
+                elif i==1:
+                    action_xyz = desired_goal-np.array([0,0,0.0])-current_right_ee_pos
+                    action_xyz = np.tanh(action_scale*action_xyz)
+                    action_grip = grip_scale*np.array([0.0]) # obj쪽으로 가면서 gripper 조금씩 close하려했는데 force이다보니 아무리 작은 value여도 0이상이면 닫히는 속도는 same
+                    action = np.concatenate([action_xyz, action_grip]) # open
+                    
+                 
+                
+                obs, reward, _, _ = env.step(action.copy())
+                if render: env.render()
+                # TODO: get_obs_dict() takes a long time causing timing issues.
+                #   Is it due to Upboard's lackluster performance or some deeper
+                #   issues within UR Script wrppaer?
+                qpos_right = env._get_ur3_qpos()[:env.ur3_nqpos]
+                qpos_left = env._get_ur3_qpos()[env.ur3_nqpos:]
+                qvel_right = env._get_ur3_qvel()[:env.ur3_nqvel]
+                qvel_left = env._get_ur3_qvel()[env.ur3_nqvel:]
+                _, right_ee_pos, _ = env.forward_kinematics_ee(qpos_right, 'right')
+                _, left_ee_pos, _ = env.forward_kinematics_ee(qpos_left, 'left')
+                current_right_ee_pos = env.get_endeff_pos('right')
+                object_pos = env.get_site_pos('objSite')
+                
+                gripper_qpos_right = env._get_gripper_qpos()[:env.gripper_nqpos]
+                gripper_qpos_left = env._get_gripper_qpos()[env.gripper_nqpos:]
+
+                # print('time: %f [s]'%(t*dt))
+                # print('step : {}, right ee : {} obj : {} act : {}'.format(t, right_ee_pos, object_pos, action))
+                
+                grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
+                # print('step : {}, g pos : {} o pos : {} o relpos : {} g state : {} o rot : {} o velp : {} o velr : {} g velp : {} g vel : {}'.format(t, grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel))
+                print('step : {} o pos : {}  g_state : {}  rew : {}'.format(t, object_pos, gripper_state, reward))
+                # print('step : {} o velp : {} o velr : {} g velp : {} '.format(t, object_velp, object_velr, grip_velp))
+                # print('right arm joint pos error [deg]: %f vel error [dps]: %f'%(np.rad2deg(right_pos_err), np.rad2deg(right_vel_err)))
+                # print('left arm joint pos error [deg]: %f vel error [dps]: %f'%(np.rad2deg(left_pos_err), np.rad2deg(left_vel_err)))
+                obs_list.append(np.concatenate([obs['observation'], obs['desired_goal']], axis =-1))
+            
+            
+
+        observations.append(np.stack(obs_list, axis =0)) #[ts, dim])
+    
+    observations = np.stack(observations,axis=0) #[bs, ts, dim]
+    
+    
+    import matplotlib.pyplot as plt
+    import os
+    # import tensorflow as tf
+    cur_vid_dir = os.path.join('./', 'example_video')
+    # tf.io.gfile.makedirs(cur_vid_dir)
+    os.makedirs(cur_vid_dir, exist_ok=True)
+    for i in range(n_episodes):
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        for j in range(observations.shape[-1]):
+            ax.plot(observations[i, :, j], label='obs_'+str(j))
+        plt.legend(loc='best')
+        plt.savefig(cur_vid_dir+'/obs_traj_'+str(i))
+        plt.close()
+
+
+    if make_video:
+        env.close()
+    else:
+        while True:
+            env.render()
+
+
 if __name__ == '__main__':
     # 1. MuJoCo model verification
     # show_dual_ur3()
@@ -3731,7 +3930,8 @@ if __name__ == '__main__':
     # dscho_posxyz_single_v4_v5_test(render=True)
     # dscho_init_qpos_candidate_pickling(render=True)
     # dscho_single_ur3_object_test(render=False, make_video = False)
-    dscho_mocap_single_ur3_object_test(render=False, make_video = True)
+    # dscho_mocap_single_ur3_object_test(render=False, make_video = True)
+    dscho_mocap_single_ur3_peg_for_ARL_test(render=False, make_video = True)
 
 
     # 3. Misc. tests

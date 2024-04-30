@@ -19,6 +19,9 @@ import joblib
 import time
 import mujoco_py
 from gym_custom.envs.robotics import rotations #, robot_env, utils
+from PIL import Image
+
+
 color2num = dict(
     gray=30,
     red=31,
@@ -706,6 +709,10 @@ class DSCHODualUR3MocapEnv(DualUR3Gripper):
         self.sim.data.set_mocap_pos('left_mocap', left_gripper_target)
         self.sim.data.set_mocap_quat('left_mocap', left_gripper_rotation)
 
+        
+        
+
+
     # NOTE : Should init the mocap?
     def _env_setup(self, initial_qpos):
         # print('debug before set state : right ee body pos  : {} left ee body pos : {}'.format(self.data.get_body_xpos('right_gripper:hand'), self.data.get_body_xpos('left_gripper:hand')))
@@ -754,6 +761,15 @@ class DSCHODualUR3MocapEnv(DualUR3Gripper):
             right_gripper_ctrl = np.ones_like(right_gripper_ctrl)
             left_gripper_ctrl = np.ones_like(left_gripper_ctrl)
         
+        # if self.task in ['peg']:
+        #     # to weld the object at the end effector's position (to prevent missing the object)
+        #     ee_pos = self.get_endeff_pos(arm=self.which_hand)
+        #     obj_pos = self.get_obj_pos()
+        #     delta_pos = (ee_pos - obj_pos)
+        #     obj_pos_ctrl = delta_pos
+        #     obj_rot_ctrl = [0., 1., 0., 0.]
+        #     action = np.concatenate([right_pos_ctrl, right_rot_ctrl, left_pos_ctrl, left_rot_ctrl, obj_pos_ctrl, obj_rot_ctrl, right_gripper_ctrl, left_gripper_ctrl])
+        # else:
         action = np.concatenate([right_pos_ctrl, right_rot_ctrl, left_pos_ctrl, left_rot_ctrl, right_gripper_ctrl, left_gripper_ctrl])
 
         # Apply action to simulation.
@@ -1192,6 +1208,9 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                         size=(self.goal_ee_pos_space.low.size),
                     )
                     goal = goal_ee_pos
+                # dscho added for ARL
+                elif self.task in ['peg']:
+                    goal = np.array([-0.2, -0.45, self.table_z_offset+0.15])
                 else:
                     raise NotImplementedError
 
@@ -1217,6 +1236,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         for _ in range(5):
             self.sim.step()
 
+        
         # randomly reset the initial position of an object
         if self.has_object:
             if self.fix_init_obj:
@@ -1300,8 +1320,114 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
                 self.sim.data.set_joint_qpos('goal_slidey', slide_qpos)
             elif self.task in ['button_press']:
                 pass
+            # dscho added for ARL
+            elif self.task in ['peg']:
+                assert self.which_hand == 'right'
+                # enforce object pos to be on the table
+                object_initial_pos = np.array([0.0, -0.3, self.table_z_offset])
+                object_qpos = self.sim.data.get_joint_qpos('objjoint')
+                assert object_qpos.shape == (7,)
+                object_qpos[:3] = object_initial_pos
+                self.sim.data.set_joint_qpos('objjoint', object_qpos)
+
+                desired_initial_pos = self.get_endeff_pos(arm=self.which_hand)
+                noise_xy = np.random.normal(loc=np.zeros_like(desired_initial_pos[:2]), scale=0.05*np.ones_like(desired_initial_pos[:2]))
+                noise_z = np.random.normal(loc=np.zeros_like(desired_initial_pos[-1:]), scale=0.03*np.ones_like(desired_initial_pos[-1:]))
+                desired_initial_pos += np.concatenate([noise_xy, noise_z], axis=-1)
+                # obj_target = ee_pos
+                gripper_rotation = np.array([0., 1., 0., 0.])
+                self.sim.data.set_mocap_pos('right_mocap', desired_initial_pos)
+                self.sim.data.set_mocap_quat('right_mocap', gripper_rotation)
+                for _ in range(5):
+                    self.sim.step()
+
+                ######### previous ver without mocap weld for object
+                # # reset to the state where the robot grasp the peg and lift it up
+                
+                # assert self.block_gripper, 'block_gripper in env setting should be True for efficient training'
+                # self.block_gripper = False # temporarily do not block the gripper for reset
+
+
+                # # right_pos_ctrl, right_gripper_ctrl, left_pos_ctrl, left_gripper_ctrl = action[:3], action[3], action[4:7], action[7]
+
+                # action_scale = 10
+                # # move to the object with offset
+                # for _ in range(10):
+                #     object_pos = self.get_obj_pos()
+                #     ee_pos = self.get_endeff_pos(arm=self.which_hand)
+                #     delta_pos = object_pos + np.array([0.02, 0, 0.1]) - ee_pos 
+                #     right_action = np.concatenate([0.1*np.tanh(action_scale*delta_pos), np.array([-1.0])]) # gripper opened
+                #     left_action = np.zeros_like(right_action)
+                #     action = np.concatenate([right_action, left_action])
+                #     self.step(action)
+                
+                # img = self.render(mode='rgb_array', camera_name='topview')
+                # Image.fromarray(img).save('./example_video/obs_reset_1st_stage.png')
+
+                # # move to the object
+                # for _ in range(10):
+                #     object_pos = self.get_obj_pos()
+                #     ee_pos = self.get_endeff_pos(arm=self.which_hand)
+                #     delta_pos = object_pos +np.array([0.02, 0, 0.0]) - ee_pos
+                #     right_action = np.concatenate([0.1*np.tanh(action_scale*delta_pos), np.array([-1.0])]) # gripper opened
+                #     left_action = np.zeros_like(right_action)
+                #     action = np.concatenate([right_action, left_action])
+                #     self.step(action)
+                
+                # img = self.render(mode='rgb_array', camera_name='topview')
+                # Image.fromarray(img).save('./example_video/obs_reset_2nd_stage.png')
+
+                # if np.linalg.norm(delta_pos) > 0.08:
+                #     print('Bad reset at the 2nd stage..')
+                #     self.block_gripper = True
+                #     return self.reset_model()
+                
+                
+                # # grasp
+                # for _ in range(3):
+                #     object_pos = self.get_obj_pos()
+                #     ee_pos = self.get_endeff_pos(arm=self.which_hand)
+                #     delta_pos = object_pos +np.array([0.02, 0, 0.0]) - ee_pos
+                #     right_action = np.concatenate([0.1*np.tanh(action_scale*delta_pos), np.array([1.0])]) # gripper closed
+                #     left_action = np.zeros_like(right_action)
+                #     action = np.concatenate([right_action, left_action])
+                #     self.step(action)
+                
+                # img = self.render(mode='rgb_array', camera_name='topview')
+                # Image.fromarray(img).save('./example_video/obs_reset_3rd_stage.png')
+
+                # desired_initial_pos = np.array([0.0, -0.45, self.table_z_offset+0.15])
+                # # add noise to the desired initial_pos
+                # noise_xy = np.random.normal(loc=np.zeros_like(desired_initial_pos[:2]), scale=0.05*np.ones_like(desired_initial_pos[:2]))
+                # noise_z = np.random.normal(loc=np.zeros_like(desired_initial_pos[-1:]), scale=0.03*np.ones_like(desired_initial_pos[-1:]))
+                # desired_initial_pos += np.concatenate([noise_xy, noise_z], axis=-1)
+                
+                # # reset to the initial state
+                # for _ in range(10):
+                #     object_pos = self.get_obj_pos()
+                #     ee_pos = self.get_endeff_pos(arm=self.which_hand)
+                #     print(f'ee pos : {ee_pos} obj pos : {object_pos}')
+                #     delta_pos = desired_initial_pos - object_pos
+                #     right_action = np.concatenate([0.1*np.tanh(action_scale*delta_pos), np.array([1.0])]) # gripper closed
+                #     left_action = np.zeros_like(right_action)
+                #     action = np.concatenate([right_action, left_action])
+                #     self.step(action)
+                
+                # img = self.render(mode='rgb_array', camera_name='topview')
+                # Image.fromarray(img).save('./example_video/obs_reset_4th_stage.png')
+
+                # if np.linalg.norm(delta_pos) > 0.05:
+                #     print('Bad reset..')
+                #     self.block_gripper = True
+                #     return self.reset_model()
+                
+                # self.block_gripper = True # block the gripper for simulation
+
+
             else:
                 pass
+
+
         self.sim.forward()
         self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
         
@@ -1386,7 +1512,7 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         dt = self.sim.nsubsteps * self.sim.model.opt.timestep # same as self.dt (0.05)
 
         if self.has_object:
-            if self.task in ['pickandplace', 'pickandplace_wall', 'push']:
+            if self.task in ['pickandplace', 'pickandplace_wall', 'push', 'peg']:
                 obj_pos = self.get_obj_pos(name='obj')
                 obj_rot = rotations.mat2euler(self.sim.data.get_site_xmat('objSite'))
                 obj_velp = self.sim.data.get_site_xvelp('objSite') * dt
@@ -1642,34 +1768,61 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
     #         return tf.concat([goals[:, :self.obs_nqpos], goals[:, -3:]], axis =-1)
 
     def _is_success(self, achieved_goal, desired_goal):
-        if self.reward_success_criterion=='full_state':
-            d = np.linalg.norm(achieved_goal-desired_goal)
-        elif self.reward_success_criterion=='ee_pos':
+        # dscho added for ARL
+        if self.task in ['peg']:
             d = np.linalg.norm(achieved_goal[-3:]-desired_goal[-3:])
-        else :
-            raise NotImplementedError
-        return (d < self.distance_threshold).astype(np.float32)
+            obj_tip_xpos = self.sim.data.get_site_xpos('obj_tip_site')[0] # achieved_goal[0]
+            # print(f'distance : {d} obj_xpos : {obj_xpos} goal_xpos : {self._state_goal[0]}')
+            # make sure the object is inside the hole
+            if obj_tip_xpos < self._state_goal[0] and d < self.distance_threshold:
+                return np.array([1.0])
+            else:
+                return np.array([0.0])
+
+        else:
+            if self.reward_success_criterion=='full_state':
+                d = np.linalg.norm(achieved_goal-desired_goal)
+            elif self.reward_success_criterion=='ee_pos':
+                d = np.linalg.norm(achieved_goal[-3:]-desired_goal[-3:])
+            else :
+                raise NotImplementedError
+            return (d < self.distance_threshold).astype(np.float32)
 
     # Has no meaning in TDM, LEAP
     def compute_reward(self, achieved_goal, desired_goal, info):
-        if self.reward_success_criterion=='full_state':
-            placingDist = np.linalg.norm(achieved_goal - desired_goal)
-        elif self.reward_success_criterion=='ee_pos':
+        # dscho added for ARL
+        if self.task in ['peg']:
             placingDist = np.linalg.norm(achieved_goal[-3:] - desired_goal[-3:])
-        
-        if self.sparse_reward : 
-            if placingDist < self.distance_threshold:
-                reward = 0.0
-            else :
-                reward = -1.0
-        else :
-            if self.task in ['push']:
-                # print('currently, dense push debug')
-                ee_pos = info['right_ee_pos']
-                from_ee_to_obj = np.linalg.norm(achieved_goal[-3:] - ee_pos[-3:])
-                reward = -from_ee_to_obj -placingDist
-            else:
+            
+            if self.sparse_reward:
+                obj_tip_xpos = self.sim.data.get_site_xpos('obj_tip_site')[0] # achieved_goal[0]
+                if obj_tip_xpos < self._state_goal[0] and placingDist < self.distance_threshold:
+                    reward = 0.0
+                else :
+                    reward = -1.0    
+            else:    
                 reward = -placingDist
+            return reward
+        
+        else:
+            if self.reward_success_criterion=='full_state':
+                placingDist = np.linalg.norm(achieved_goal - desired_goal)
+            elif self.reward_success_criterion=='ee_pos':
+                placingDist = np.linalg.norm(achieved_goal[-3:] - desired_goal[-3:])
+            
+            if self.sparse_reward : 
+                if placingDist < self.distance_threshold:
+                    reward = 0.0
+                else :
+                    reward = -1.0
+            else:
+                if self.task in ['push']:
+                    # print('currently, dense push debug')
+                    ee_pos = info['right_ee_pos']
+                    from_ee_to_obj = np.linalg.norm(achieved_goal[-3:] - ee_pos[-3:])
+                    reward = -from_ee_to_obj -placingDist
+                else:
+                    reward = -placingDist
 
         return reward
 
@@ -2487,3 +2640,9 @@ class DSCHOSingleUR3ButtonEnv(DSCHOSingleUR3GoalMocapEnv):
     def __init__(self, *args, **kwargs):
         self.save_init_params(locals())
         super().__init__(has_object=True, block_gripper=False, *args, **kwargs)
+
+# dscho added for ARL
+class DSCHOSingleUR3PegEnv(DSCHOSingleUR3GoalMocapEnv):
+    def __init__(self, *args, **kwargs):
+        self.save_init_params(locals())
+        super().__init__(has_object=True, block_gripper=False, task='peg', *args, **kwargs)
