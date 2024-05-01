@@ -3721,7 +3721,7 @@ def dscho_mocap_single_ur3_object_test(env_type='sim', render=False, make_video 
 
 
 
-def dscho_mocap_single_ur3_peg_for_ARL_test(env_type='sim', render=False, make_video = False):
+def dscho_mocap_single_ur3_for_ARL_test(env_type='sim', render=False, make_video = False):
     list_of_env_types = ['sim', 'real']
 
     q_control_type = 'speedj'
@@ -3737,6 +3737,7 @@ def dscho_mocap_single_ur3_peg_for_ARL_test(env_type='sim', render=False, make_v
     
     # dscho added for ARL
     env_id = 'dscho-single-ur3-mocap-peg-v1'
+    # env_id = 'dscho-single-ur3-mocap-sweep-v1'
     
     # make_video = False
     which_hand = 'right'
@@ -3748,6 +3749,11 @@ def dscho_mocap_single_ur3_peg_for_ARL_test(env_type='sim', render=False, make_v
     if 'peg' in env_id:
         env_kwargs = dict(xml_filename= 'dscho_dual_ur3_upright_mocap_peg_flat_gripper.xml' if upright_ver else None,                            
                         )
+        so3_constraint='vertical_side'
+    elif 'sweep' in env_id:
+        env_kwargs = dict(xml_filename= 'dscho_dual_ur3_upright_mocap_sweep_flat_gripper.xml' if upright_ver else None,                            
+                        )
+        so3_constraint='vertical_front'
     else:
         raise NotImplementedError
     reset_at_goal = True
@@ -3756,7 +3762,7 @@ def dscho_mocap_single_ur3_peg_for_ARL_test(env_type='sim', render=False, make_v
                         which_hand=which_hand,
                         observation_type = 'ee_object_pos_w_grip_custom_vel', # 'ee_object_pos_w_grip_delta_pos',
                         trigonometry_observation = False,
-                        so3_constraint='vertical_side', #사실상 의미x. so3 error calculation에만 사용
+                        so3_constraint=so3_constraint, # 'vertical_side', #사실상 의미x. so3 error calculation에만 사용
                         flat_gripper = True,                             
                         custom_frame_skip = 20, # if 20, 0.005 * 20 =0.1s per step
                         reset_at_goal = reset_at_goal, # False
@@ -3831,7 +3837,7 @@ def dscho_mocap_single_ur3_peg_for_ARL_test(env_type='sim', render=False, make_v
                     if reset_at_goal:
                         action_xyz = np.array([0.1,0.0,0])
                     else:
-                        action_xyz = desired_goal+ np.array([0.1,0.1,0])-current_right_ee_pos
+                        action_xyz = desired_goal+ np.array([0.1,0,0])-current_right_ee_pos
                     action_xyz = np.tanh(action_scale*action_xyz)
                     action_grip = grip_scale*np.array([-1])
                     action = np.concatenate([action_xyz, action_grip], axis =-1) # open
@@ -3946,7 +3952,7 @@ if __name__ == '__main__':
     # dscho_init_qpos_candidate_pickling(render=True)
     # dscho_single_ur3_object_test(render=False, make_video = False)
     # dscho_mocap_single_ur3_object_test(render=False, make_video = True)
-    dscho_mocap_single_ur3_peg_for_ARL_test(render=False, make_video = True)
+    dscho_mocap_single_ur3_for_ARL_test(render=False, make_video = True)
 
 
     # 3. Misc. tests

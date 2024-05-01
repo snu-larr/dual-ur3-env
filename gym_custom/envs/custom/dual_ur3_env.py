@@ -32,7 +32,7 @@ multi_task_xmls = ['dscho_dual_ur3_upright_mocap_door_flat_gripper.xml', 'dscho_
 multi_object_xmls = ['dscho_dual_ur3_upright_mocap_1object_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_2object_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_4object_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_6object_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_8object_flat_gripper.xml']
 
 # dscho added for ARL 
-arl_xmls = ['dscho_dual_ur3_upright_mocap_peg_flat_gripper.xml']
+arl_xmls = ['dscho_dual_ur3_upright_mocap_peg_flat_gripper.xml', 'dscho_dual_ur3_upright_mocap_sweep_flat_gripper.xml']
 
 
 class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
@@ -97,8 +97,13 @@ class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
         # dscho added for ARL
         elif xml_filename in arl_xmls:
             self.mujoco_xml_full_path = os.path.join(os.path.dirname(__file__), 'assets/ur3/'+xml_filename)
-            self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [7] # object
-            self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, [6]
+            if 'sweep' in  xml_filename:
+                self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, [7]*self.num_objects # cube object
+                self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, [6]*self.num_objects
+            elif 'peg' in  xml_filename:
+                self.ur3_nqpos, self.gripper_nqpos, self.objects_nqpos = 6, 10, []
+                self.ur3_nqvel, self.gripper_nqvel, self.objects_nqvel = 6, 10, []
+            
             
 
         #self._ezpickle_init()
