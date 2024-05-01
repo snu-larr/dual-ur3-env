@@ -3750,7 +3750,7 @@ def dscho_mocap_single_ur3_peg_for_ARL_test(env_type='sim', render=False, make_v
                         )
     else:
         raise NotImplementedError
-    
+    reset_at_goal = True
     env_kwargs.update(dict(initMode = None, 
                         sparse_reward = True, 
                         which_hand=which_hand,
@@ -3759,6 +3759,7 @@ def dscho_mocap_single_ur3_peg_for_ARL_test(env_type='sim', render=False, make_v
                         so3_constraint='vertical_side', #사실상 의미x. so3 error calculation에만 사용
                         flat_gripper = True,                             
                         custom_frame_skip = 20, # if 20, 0.005 * 20 =0.1s per step
+                        reset_at_goal = reset_at_goal, # False
                         ))
     env = gym_custom.make(env_id , **env_kwargs)
    
@@ -3824,20 +3825,34 @@ def dscho_mocap_single_ur3_peg_for_ARL_test(env_type='sim', render=False, make_v
                 
         obs_list =[]
         obs_list.append(np.concatenate([obs['observation'], obs['desired_goal']], axis =-1))
-        for i in range(2):
+        for i in range(3):
             for t in range(int(duration/dt)):
                 if i==0 :
-                    action_xyz = desired_goal+ np.array([0.1,0,0])-current_right_ee_pos
+                    if reset_at_goal:
+                        action_xyz = np.array([0.1,0.0,0])
+                    else:
+                        action_xyz = desired_goal+ np.array([0.1,0.1,0])-current_right_ee_pos
                     action_xyz = np.tanh(action_scale*action_xyz)
                     action_grip = grip_scale*np.array([-1])
                     action = np.concatenate([action_xyz, action_grip], axis =-1) # open
                     
                 elif i==1:
-                    action_xyz = desired_goal-np.array([0,0,0.0])-current_right_ee_pos
+                    if reset_at_goal:
+                        action_xyz = desired_goal-current_right_ee_pos
+                    else:
+                        action_xyz = desired_goal-np.array([0,0,0.0])-current_right_ee_pos
                     action_xyz = np.tanh(action_scale*action_xyz)
                     action_grip = grip_scale*np.array([0.0]) # obj쪽으로 가면서 gripper 조금씩 close하려했는데 force이다보니 아무리 작은 value여도 0이상이면 닫히는 속도는 same
                     action = np.concatenate([action_xyz, action_grip]) # open
-                    
+                
+                elif i==2 :
+                    if reset_at_goal:
+                        action_xyz = desired_goal-current_right_ee_pos
+                    else:
+                        action_xyz = desired_goal+ np.array([0.1,0,0])-current_right_ee_pos
+                    action_xyz = np.tanh(action_scale*action_xyz)
+                    action_grip = grip_scale*np.array([-1])
+                    action = np.concatenate([action_xyz, action_grip], axis =-1) # open
                  
                 
                 obs, reward, _, _ = env.step(action.copy())
