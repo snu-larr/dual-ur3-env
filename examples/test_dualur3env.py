@@ -3736,8 +3736,8 @@ def dscho_mocap_single_ur3_for_ARL_test(env_type='sim', render=False, make_video
     
     
     # dscho added for ARL
-    env_id = 'dscho-single-ur3-mocap-peg-v1'
-    # env_id = 'dscho-single-ur3-mocap-sweep-v1'
+    # env_id = 'dscho-single-ur3-mocap-peg-v1'
+    env_id = 'dscho-single-ur3-mocap-sweep-v1'
     
     # make_video = False
     which_hand = 'right'
@@ -3756,7 +3756,7 @@ def dscho_mocap_single_ur3_for_ARL_test(env_type='sim', render=False, make_video
         so3_constraint='vertical_front'
     else:
         raise NotImplementedError
-    reset_at_goal = True
+    reset_at_goal = False # True
     env_kwargs.update(dict(initMode = None, 
                         sparse_reward = True, 
                         which_hand=which_hand,
@@ -3811,7 +3811,7 @@ def dscho_mocap_single_ur3_for_ARL_test(env_type='sim', render=False, make_video
         env = VideoWrapper(env, base_path=cur_vid_dir, base_name=full_vid_name, ur3_cam=ur3_cam, custom_env = custom_env)
 
 
-    duration = 2 # in seconds
+    duration = 1 #2 # in seconds
     single = True
     action_scale = 30 # 빠르게 움직이고 싶으면 action downscale or action scale조절(NOTE : action scale은 원래 학습의 영역임)
     grip_scale = 1
@@ -3819,8 +3819,23 @@ def dscho_mocap_single_ur3_for_ARL_test(env_type='sim', render=False, make_video
     
     observations =[]
 
+
+    predefined_goal_dict_for_multi_objects = {'sweep_forward' : np.array([[0.1, -0.4, 0.755],
+                                                                        [-0.1, -0.4, 0.755],
+                                                                        ]),
+                                            'sweep_backward' : np.array([0, -0.4, 0.755]),
+                                            }
+
     for episode in range(n_episodes):
-        obs = env.reset()
+        if 'sweep' in env_id:
+            reset_state_index = 0
+            if reset_at_goal:
+                obs = env.reset(init=predefined_goal_dict_for_multi_objects['sweep_forward'][reset_state_index])
+            else:
+                obs = env.reset(goal=predefined_goal_dict_for_multi_objects['sweep_forward'][reset_state_index])
+        else:
+            obs = env.reset()
+
         desired_goal =obs['desired_goal']
         current_right_ee_pos = env.get_endeff_pos('right')
         
@@ -3839,7 +3854,8 @@ def dscho_mocap_single_ur3_for_ARL_test(env_type='sim', render=False, make_video
                     else:
                         action_xyz = desired_goal+ np.array([0.1,0,0])-current_right_ee_pos
                     action_xyz = np.tanh(action_scale*action_xyz)
-                    action_grip = grip_scale*np.array([-1])
+                    # action_grip = grip_scale*np.array([-1])
+                    action_grip = grip_scale*np.random.normal(loc=np.zeros(1), scale=np.ones(1)*0.5)
                     action = np.concatenate([action_xyz, action_grip], axis =-1) # open
                     
                 elif i==1:
@@ -3848,7 +3864,8 @@ def dscho_mocap_single_ur3_for_ARL_test(env_type='sim', render=False, make_video
                     else:
                         action_xyz = desired_goal-np.array([0,0,0.0])-current_right_ee_pos
                     action_xyz = np.tanh(action_scale*action_xyz)
-                    action_grip = grip_scale*np.array([0.0]) # obj쪽으로 가면서 gripper 조금씩 close하려했는데 force이다보니 아무리 작은 value여도 0이상이면 닫히는 속도는 same
+                    # action_grip = grip_scale*np.array([0.0])
+                    action_grip = grip_scale*np.random.normal(loc=np.zeros(1), scale=np.ones(1)*0.5) 
                     action = np.concatenate([action_xyz, action_grip]) # open
                 
                 elif i==2 :
@@ -3857,7 +3874,8 @@ def dscho_mocap_single_ur3_for_ARL_test(env_type='sim', render=False, make_video
                     else:
                         action_xyz = desired_goal+ np.array([0.1,0,0])-current_right_ee_pos
                     action_xyz = np.tanh(action_scale*action_xyz)
-                    action_grip = grip_scale*np.array([-1])
+                    # action_grip = grip_scale*np.array([-1])
+                    action_grip = grip_scale*np.random.normal(loc=np.zeros(1), scale=np.ones(1)*0.5)
                     action = np.concatenate([action_xyz, action_grip], axis =-1) # open
                  
                 

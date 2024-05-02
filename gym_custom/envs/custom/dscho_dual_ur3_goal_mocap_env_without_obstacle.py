@@ -1924,10 +1924,16 @@ class DSCHOSingleUR3GoalMocapMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
         self.num_objects = num_objects
         
 
-        self.predefined_goal_dict_for_multi_objects = {'sweep_forward' : np.array([0.075, -0.4, 0.755]),
-                                                        'sweep_backward' : np.array([-0.05, -0.4, 0.755]),
+        # self.predefined_goal_dict_for_multi_objects = {'sweep_forward' : np.array([0.075, -0.4, 0.755]),
+        #                                                 'sweep_backward' : np.array([-0.05, -0.4, 0.755]),
+        #                                                 }
+        self.predefined_goal_dict_for_multi_objects = {'sweep_forward' : np.array([[0.1, -0.4, 0.755],
+                                                                                   [-0.1, -0.4, 0.755],
+                                                                                   ]),
+                                                        'sweep_backward' : np.array([0, -0.4, 0.755]),
                                                         }
         
+
         super().__init__(*args, **kwargs)
 
         
@@ -2074,14 +2080,16 @@ class DSCHOSingleUR3GoalMocapMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
         else :
             # dscho added for ARL
             if self.task in ['sweep']:
-                goal = self.predefined_goal_dict_for_multi_objects['sweep_forward']
+                # goal = self.predefined_goal_dict_for_multi_objects['sweep_forward']
+                goals = self.predefined_goal_dict_for_multi_objects['sweep_forward']
+                goal = goals[np.random.randint(goals.shape[0])]
             
             else:
                 raise NotImplementedError
 
         return goal
     
-    def reset_model(self):
+    def reset_model(self, goal=None, init=None):
         
         qpos = self._get_init_qpos() #+ self.np_random.uniform(size=self.model.nq, low=-0.01, high=0.01)
         qvel = self.init_qvel + self.np_random.uniform(size=self.model.nv, low=-0.01, high=0.01)
@@ -2093,6 +2101,7 @@ class DSCHOSingleUR3GoalMocapMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
             self.sim.step()
 
         
+
         # randomly reset the initial position of an object
         if self.has_object:
             
@@ -2100,31 +2109,27 @@ class DSCHOSingleUR3GoalMocapMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
             if self.task in ['sweep']:
                 assert self.which_hand == 'right'
                 if self.reset_at_goal:
-                    obj_0_init_pos = np.array([0.125, -0.3, self.table_z_offset])
-                    obj_1_init_pos = np.array([0.125, -0.35, self.table_z_offset])
-                    obj_2_init_pos = np.array([0.125, -0.4, self.table_z_offset])
-                    obj_3_init_pos = np.array([0.125, -0.45, self.table_z_offset])
-                    desired_initial_ee_pos = np.array([0.175, -0.4, self.table_z_offset+0.1])
+                    if init is None:
+                        # randomly select one of the forward goals
+                        inits = self.predefined_goal_dict_for_multi_objects['sweep_forward']
+                        init = inits[np.random.randint(inits.shape[0])]
+                        
 
-                    self.sim.data.set_joint_qpos("obj_0:joint_px", obj_0_init_pos[0])
-                    self.sim.data.set_joint_qpos("obj_0:joint_py", obj_0_init_pos[1])
-                    self.sim.data.set_joint_qpos("obj_0:joint_pz", obj_0_init_pos[2])
-                    self.sim.data.set_joint_qpos("obj_1:joint_px", obj_1_init_pos[0])
-                    self.sim.data.set_joint_qpos("obj_1:joint_py", obj_1_init_pos[1])
-                    self.sim.data.set_joint_qpos("obj_1:joint_pz", obj_1_init_pos[2])
-                    self.sim.data.set_joint_qpos("obj_2:joint_px", obj_2_init_pos[0])
-                    self.sim.data.set_joint_qpos("obj_2:joint_py", obj_2_init_pos[1])
-                    self.sim.data.set_joint_qpos("obj_2:joint_pz", obj_2_init_pos[2])
-                    self.sim.data.set_joint_qpos("obj_3:joint_px", obj_3_init_pos[0])
-                    self.sim.data.set_joint_qpos("obj_3:joint_py", obj_3_init_pos[1])
-                    self.sim.data.set_joint_qpos("obj_3:joint_pz", obj_3_init_pos[2])
-                else:
-                    obj_0_init_pos = np.array([-0.075, -0.3, self.table_z_offset])
-                    obj_1_init_pos = np.array([-0.075, -0.35, self.table_z_offset])
-                    obj_2_init_pos = np.array([-0.075, -0.4, self.table_z_offset])
-                    obj_3_init_pos = np.array([-0.075, -0.45, self.table_z_offset])
-                    desired_initial_ee_pos = np.array([-0.125, -0.4, self.table_z_offset+0.1])
+                    if (init == self.predefined_goal_dict_for_multi_objects['sweep_forward'][0]).all():
+                        obj_0_init_pos = np.array([0.125, -0.3, self.table_z_offset])
+                        obj_1_init_pos = np.array([0.125, -0.35, self.table_z_offset])
+                        obj_2_init_pos = np.array([0.125, -0.4, self.table_z_offset])
+                        obj_3_init_pos = np.array([0.125, -0.45, self.table_z_offset])
+                        desired_initial_ee_pos = np.array([0.175, -0.4, self.table_z_offset+0.1])
 
+                    elif (init == self.predefined_goal_dict_for_multi_objects['sweep_forward'][1]).all():
+                        obj_0_init_pos = np.array([-0.075, -0.3, self.table_z_offset])
+                        obj_1_init_pos = np.array([-0.075, -0.35, self.table_z_offset])
+                        obj_2_init_pos = np.array([-0.075, -0.4, self.table_z_offset])
+                        obj_3_init_pos = np.array([-0.075, -0.45, self.table_z_offset])
+                        desired_initial_ee_pos = np.array([-0.125, -0.4, self.table_z_offset+0.1])
+
+                    
                     self.sim.data.set_joint_qpos("obj_0:joint_px", obj_0_init_pos[0])
                     self.sim.data.set_joint_qpos("obj_0:joint_py", obj_0_init_pos[1])
                     self.sim.data.set_joint_qpos("obj_0:joint_pz", obj_0_init_pos[2])
@@ -2138,6 +2143,36 @@ class DSCHOSingleUR3GoalMocapMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
                     self.sim.data.set_joint_qpos("obj_3:joint_py", obj_3_init_pos[1])
                     self.sim.data.set_joint_qpos("obj_3:joint_pz", obj_3_init_pos[2])
                     
+                    self._state_goal = self.predefined_goal_dict_for_multi_objects['sweep_backward']
+
+                else:
+                    if goal is None:
+                        # randomly select one of the forward goals
+                        goals = self.predefined_goal_dict_for_multi_objects['sweep_forward']
+                        goal = goals[np.random.randint(goals.shape[0])]
+
+                    
+                    obj_0_init_pos = np.array([0.025, -0.3, self.table_z_offset])
+                    obj_1_init_pos = np.array([0.025, -0.35, self.table_z_offset])
+                    obj_2_init_pos = np.array([0.025, -0.4, self.table_z_offset])
+                    obj_3_init_pos = np.array([0.025, -0.45, self.table_z_offset])
+                    desired_initial_ee_pos = np.array([0.025, -0.4, self.table_z_offset+0.1])
+
+                    
+                    self.sim.data.set_joint_qpos("obj_0:joint_px", obj_0_init_pos[0])
+                    self.sim.data.set_joint_qpos("obj_0:joint_py", obj_0_init_pos[1])
+                    self.sim.data.set_joint_qpos("obj_0:joint_pz", obj_0_init_pos[2])
+                    self.sim.data.set_joint_qpos("obj_1:joint_px", obj_1_init_pos[0])
+                    self.sim.data.set_joint_qpos("obj_1:joint_py", obj_1_init_pos[1])
+                    self.sim.data.set_joint_qpos("obj_1:joint_pz", obj_1_init_pos[2])
+                    self.sim.data.set_joint_qpos("obj_2:joint_px", obj_2_init_pos[0])
+                    self.sim.data.set_joint_qpos("obj_2:joint_py", obj_2_init_pos[1])
+                    self.sim.data.set_joint_qpos("obj_2:joint_pz", obj_2_init_pos[2])
+                    self.sim.data.set_joint_qpos("obj_3:joint_px", obj_3_init_pos[0])
+                    self.sim.data.set_joint_qpos("obj_3:joint_py", obj_3_init_pos[1])
+                    self.sim.data.set_joint_qpos("obj_3:joint_pz", obj_3_init_pos[2])
+                    
+                    self._state_goal = goal
                 
                 # self.sim.forward()
 
@@ -2161,7 +2196,7 @@ class DSCHOSingleUR3GoalMocapMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
 
 
         self.sim.forward()
-        self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
+        
         
         
             
@@ -2952,7 +2987,7 @@ class DSCHOSingleUR3PegEnv(DSCHOSingleUR3GoalMocapEnv):
     def __init__(self, *args, **kwargs):
         self.save_init_params(locals())
         assert kwargs.get('so3_constraint')=='vertical_side'
-        super().__init__(has_object=True, block_gripper=False, task='peg', *args, **kwargs)
+        super().__init__(has_object=True, block_gripper=True, task='peg', *args, **kwargs)
 
 class DSCHOSingleUR3SweepEnv(DSCHOSingleUR3GoalMocapMultiObjectEnv):
     def __init__(self, *args, **kwargs):

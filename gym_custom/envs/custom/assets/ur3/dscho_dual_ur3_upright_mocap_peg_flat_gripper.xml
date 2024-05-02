@@ -61,7 +61,13 @@
         <!-- <camera pos="1.1 -1.4 2.0" name="topview"  xyaxes="0.5 0.5 0 0 0.5 0.5" /> -->
         
         <!-- for ARL -->
-        <camera pos="0.4 -1.0 1.5" name="topview"  xyaxes="0.6 0.4 0 0 0.5 0.5" />
+        <!-- <camera pos="0.4 -1.0 1.5" name="topview"  xyaxes="0.6 0.4 0 0 0.5 0.5" /> -->
+        
+        <!-- fixed view ver2 (to be more closed to the hole) -->
+        <camera pos="0.4 -1.0 1.2" name="topview"  xyaxes="0.6 0.4 0 -0.2 0.2 0.6" />
+        
+        <!-- bottom up view -->
+        <!-- <camera pos="0.3 -0.85 0.8" name="topview"  xyaxes="0.5 0.5 0 0.05 -0.05 0.95"  /> -->
 
 
         <geom name="floor" type="plane" pos="0 0 0" size="2.5 2.5 0.1" 
@@ -182,7 +188,7 @@
         
         <body name="wall" pos="-0.2 -0.45 0.905" euler = "0 0 1.570796"> <!--1.570796-->
             <!-- bottom block-->
-            <geom material="wall_brick" type="box" pos="0 0 -0.095" size=".15 .01 .055" mass="1000"/>
+            <geom material="wall_brick" type="box" pos="0 0 -0.105" size=".15 .01 .065" mass="1000"/>
             <!-- left block-->
             <geom material="wall_brick" type="box" pos="0.095 0 0" size=".055 .01 .04" mass="1000"/>
             <!-- right block-->

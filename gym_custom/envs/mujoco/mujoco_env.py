@@ -104,9 +104,9 @@ class MujocoEnv(gym_custom.Env):
 
     # -----------------------------
 
-    def reset(self):
+    def reset(self, **kwargs):
         self.sim.reset()
-        ob = self.reset_model()
+        ob = self.reset_model(**kwargs)
         return ob
 
     def set_state(self, qpos, qvel):

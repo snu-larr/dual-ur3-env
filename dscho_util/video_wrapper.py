@@ -53,7 +53,7 @@ class VideoWrapper(Wrapper):
       if self.ur3_cam:
         self._recorder_2 = MyVideoRecorderWrapper(self.env, path=self._vid_name +'_topview' '.mp4')
 
-  def reset(self):
+  def reset(self, **kwargs):
     if self._new_video_every_reset:
       if self._recorder is not None:
         self._recorder.close()
@@ -75,7 +75,7 @@ class VideoWrapper(Wrapper):
       if self.ur3_cam:
         self._recorder_2 = MyVideoRecorderWrapper(self.env, path=self._vid_name +'_topview' '.mp4')
 
-    return self.env.reset()
+    return self.env.reset(**kwargs)
 
   def step(self, action):
      
