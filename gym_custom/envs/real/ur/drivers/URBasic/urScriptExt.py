@@ -30,8 +30,9 @@ import numpy as np
 import time
 import sys
 
-# from .. import urx
-# from ..urx.robotiq_two_finger_gripper import Robotiq_Two_Finger_Gripper 
+# Deprecated (07/23)
+#from .. import urx
+#from ..urx.robotiq_two_finger_gripper import Robotiq_Two_Finger_Gripper 
 
 class UrScriptExt(URBasic.urScript.UrScript):
     '''
@@ -72,8 +73,11 @@ class UrScriptExt(URBasic.urScript.UrScript):
         self.print_actual_tcp_pose()
         self.print_actual_joint_positions()
         self.__logger.info('Init done')
-        
-        # dscho modified        
+        # Deprecated (07/23)
+        # self.rob = urx.Robot(host)
+        # self.robotiqgrip = Robotiq_Two_Finger_Gripper(**gripper_kwargs)
+
+        # latest dscho modified (2021 0723)
         self.robotiq_gripper = URBasic.robotiq_gripper.RobotiqGripper()
         self.robotiq_gripper.connect(hostname=host, port=63352)
         self.robotiq_gripper.activate()
@@ -81,9 +85,26 @@ class UrScriptExt(URBasic.urScript.UrScript):
         if not self.robotiq_gripper.is_active():
             print('robotiq gripper is not activated!')
 
-        
+    def get_gripper_min_position(self):
+        return self.robotiq_gripper.get_min_position()
+    def get_gripper_max_position(self):
+        return self.robotiq_gripper.get_max_position()
 
-    def move_gripper_position(self, desired_pos, wait = True):
+    # dscho modified
+    def operate_gripper(self, value):
+        raise NotImplementedError('Use move_gripper_position method to control the gripper simultaneously')
+        '''
+        On/Off control of Gripper, 0 : open, 255 : gripper
+        '''
+        if value >255/2 :
+            self.robotiqgrip.close_gripper()
+        elif value <=255/2 and value >= 0 :
+            self.robotiqgrip.open_gripper()
+        self.rob.send_program(self.robotiqgrip.ret_program_to_run())
+        self.robotiqgrip.reset()
+    
+    # latest dscho modified (2021 0723)
+    def move_gripper_position(self, desired_pos, wait=True):
         if wait:
             self.robotiq_gripper.move_and_wait_for_pos(position=desired_pos, speed=1, force=0) # Actually, speed has no effect
         else :
@@ -92,19 +113,16 @@ class UrScriptExt(URBasic.urScript.UrScript):
     def get_gripper_position(self):
         return self.robotiq_gripper.get_current_position()
 
-    def get_gripper_min_position(self):
-        return self.robotiq_gripper.get_min_position()
-    def get_gripper_max_position(self):
-        return self.robotiq_gripper.get_max_position()
-
     def close(self):
         self.print_actual_tcp_pose()
         self.print_actual_joint_positions()
         self.robotConnector.close()
         # dscho modified
+        # self.rob.close()
+        # latest dscho modified (2021 0723)
         self.robotiq_gripper.disconnect()
 
-    def reset_error(self):
+    def reset_error(self, tsleep=2):
         '''
         Check if the UR controller is powered on and ready to run.
         If controller isn't power on it will be power up.
@@ -114,16 +132,20 @@ class UrScriptExt(URBasic.urScript.UrScript):
         state (boolean): True of power is on and no safety errors active.
 
         '''
+        
+        robot_error = not self.robotConnector.RobotModel.RobotStatus().PowerOn
+        safety_error = self.robotConnector.RobotModel.SafetyStatus().StoppedDueToSafety #self.get_safety_status()['StoppedDueToSafety']:
 
-        if not self.robotConnector.RobotModel.RobotStatus().PowerOn:
+        if robot_error or safety_error:
+            self.robotConnector.DashboardClient.wait_dbs()
+        if robot_error:
             #self.robotConnector.DashboardClient.PowerOn()
             self.robotConnector.DashboardClient.ur_power_on()
             self.robotConnector.DashboardClient.wait_dbs()
             #self.robotConnector.DashboardClient.BrakeRelease()
             self.robotConnector.DashboardClient.ur_brake_release()
             self.robotConnector.DashboardClient.wait_dbs()
-            time.sleep(2)
-        if self.robotConnector.RobotModel.SafetyStatus().StoppedDueToSafety:         #self.get_safety_status()['StoppedDueToSafety']:
+        if safety_error:
             #self.robotConnector.DashboardClient.UnlockProtectiveStop()
             self.robotConnector.DashboardClient.ur_unlock_protective_stop()
             self.robotConnector.DashboardClient.wait_dbs()
@@ -133,10 +155,14 @@ class UrScriptExt(URBasic.urScript.UrScript):
             #self.robotConnector.DashboardClient.BrakeRelease()
             self.robotConnector.DashboardClient.ur_brake_release()
             self.robotConnector.DashboardClient.wait_dbs()
-            time.sleep(2)
+        if robot_error or safety_error:
+            time.sleep(tsleep) # from original code
 
-        #return self.get_robot_status()['PowerOn'] & (not self.get_safety_status()['StoppedDueToSafety'])
-        return self.robotConnector.RobotModel.RobotStatus().PowerOn & (not self.robotConnector.RobotModel.SafetyStatus().StoppedDueToSafety)
+        if robot_error or safety_error:
+            #return self.get_robot_status()['PowerOn'] & (not self.get_safety_status()['StoppedDueToSafety'])
+            return self.robotConnector.RobotModel.RobotStatus().PowerOn & (not self.robotConnector.RobotModel.SafetyStatus().StoppedDueToSafety)
+        else:
+            return True
 
     def get_in(self, port, wait=True):
         '''

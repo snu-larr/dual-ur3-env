@@ -48,6 +48,7 @@ class DataLog(threading.Thread):
         name = logger.AddEventLogging(__name__,log2Consol=True)        
         self.__logger = logger.__dict__[name]
         self.__stop_event = True
+        self.__logdata_rate = 200 # Hz
         
         
         configFilename = URBasic.__file__[0:URBasic.__file__.find('URBasic')] + 'logConfig.xml'
@@ -116,13 +117,16 @@ class DataLog(threading.Thread):
             self.__stop_event = True
             self.join()
  
-    def run(self):
-        self.__stop_event = False
+    def run(self,disable_data_log=True): # set disable_data_log=True to turn off data logging (not event logging)
+        self.__stop_event = disable_data_log
+        if self.__stop_event:
+            self.__logger.info('Data logging (not event logging) is disabled')
+            self.__dataLogger.info('Data logging disabled by user')
         while not self.__stop_event:
             try:
                 dataDirCopy = self.__robotModel.dataDir.copy()
                 self.logdata(dataDirCopy)
-                time.sleep(0.005)
+                time.sleep(1/self.__logdata_rate)
             except:
                 self.__robotModelDataDirCopy = dataDirCopy
                 self.__logger.warning("DataLog error while running, but will retry")

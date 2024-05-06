@@ -45,7 +45,7 @@ class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
     ur3_nact, gripper_nact = 6, 2 # per ur3/gripper action dim
     objects_nqpos = [7, 7, 7, 7]
     objects_nqvel = [6, 6, 6, 6]
-    
+    ENABLE_COLLISION_CHECKER = False
     
     def __init__(self,
                 xml_filename = None, 
@@ -54,6 +54,9 @@ class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
                 ur3_random_init = False,
                 
                 ):
+        if self.ENABLE_COLLISION_CHECKER:
+            self._define_collision_checker_variables()
+
         #dscho mod
         self.save_init_params(locals())
         self.xml_filename = xml_filename
@@ -222,7 +225,23 @@ class DualUR3Env(MujocoEnv, Serializable): #, utils.EzPickle
         path_to_pkl = os.path.join(os.path.dirname(__file__), '../real/ur/dual_ur3_kinematics_params.pkl')
         if not os.path.isfile(path_to_pkl):
             pickle.dump(self.kinematics_params, open(path_to_pkl, 'wb'))
-    
+
+    def _define_collision_checker_variables(self):
+        self.collision_env = self
+
+    def _is_collision(self, right_ur3_qpos):
+        is_collision = False
+        if self.ENABLE_COLLISION_CHECKER:
+            qpos_original, qvel_original = self.collision_env.sim.data.qpos.copy(), self.collision_env.sim.data.qvel.copy()
+            qpos = self.collision_env.sim.data.qpos.copy()
+            qvel = np.zeros_like(self.collision_env.sim.data.qvel)
+            qpos[:6] = right_ur3_qpos
+            self.collision_env.set_state(qpos, qvel)
+            is_collision = self.collision_env.sim.data.nefc > 0
+            self.collision_env.set_state(qpos_original, qvel_original)
+        return is_collision
+
+    #
     # Utilities (general)
 
     def forward_kinematics_DH(self, q, arm):

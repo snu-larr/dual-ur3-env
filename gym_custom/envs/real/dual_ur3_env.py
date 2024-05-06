@@ -1,13 +1,18 @@
+import beepy
 import numpy as np
 import os
 import pickle
+import pkg_resources
 import sys
 import time
+import traceback
 import warnings
 
 import gym_custom
 from gym_custom.envs.real.ur.interface import URScriptInterface, convert_action_to_space, convert_observation_to_space, COMMAND_LIMITS
 from gym_custom.envs.real.utils import ROSRate, prompt_yes_or_no
+
+TEMP_DISABLE_LEFT_ARM = False
 
 class DualUR3RealEnv(gym_custom.Env):
     
@@ -15,16 +20,30 @@ class DualUR3RealEnv(gym_custom.Env):
     ur3_nqpos, gripper_nqpos = 6, 1 # per ur3/gripper joint pos dim
     # ur3_nqvel, gripper_nqvel = 6, 1 # per ur3/gripper joint vel dim
     # ur3_nact, gripper_nact = 6, 1 # per ur3/gripper action dim
+    ENABLE_COLLISION_CHECKER = False
 
     def __init__(self, host_ip_right, host_ip_left, rate):
         self.host_ip_right = host_ip_right
         self.host_ip_left = host_ip_left
-        self.interface_right = URScriptInterface(host_ip_right)
-        self.interface_left = URScriptInterface(host_ip_left)
+        self.interface_right = URScriptInterface(host_ip_right, alias='right')
+        self.interface_left = URScriptInterface(host_ip_left, alias='left')
         self.rate = ROSRate(rate)
         self.dt = 1/rate
 
         self._define_class_variables()
+        
+        if self.ENABLE_COLLISION_CHECKER:
+            mujoco_py_version = pkg_resources.get_distribution('mujoco-py').version
+            assert mujoco_py_version == '1.50.1.68', 'mujoco-py version 1.50.1.68 required! got %s instead'%(mujoco_py_version)
+            try:
+                import mujoco_py
+            except:
+                print('mujoco_py required for ENABLE_COLLISION_CHECKER!')
+                sys.exit()
+            self._define_collision_checker_variables()
+
+        self.run_before_rate_sleep() # clear _run_before_rate_sleep_func
+        self.run_before_rate_sleep_return = {}
 
     def _define_class_variables(self):
         '''overridable method'''
@@ -63,6 +82,21 @@ class DualUR3RealEnv(gym_custom.Env):
 
         # Misc
         self._episode_step = None
+
+    def _define_collision_checker_variables(self):
+        from gym_custom.envs.custom.dual_ur3_env import DualUR3Env
+        self.collision_env = DualUR3Env()
+        self.collision_env.reset()
+
+    def _is_collision(self, right_ur3_qpos):
+        if self.ENABLE_COLLISION_CHECKER:
+            qpos = self.collision_env.sim.data.qpos.copy()
+            qvel = np.zeros_like(self.collision_env.sim.data.qvel)
+            qpos[:6] = right_ur3_qpos
+            self.collision_env.set_state(qpos, qvel)
+            return self.collision_env.data.nefc > 0
+        else:
+            return False
 
     #
     # Utilities (general)
@@ -223,31 +257,103 @@ class DualUR3RealEnv(gym_custom.Env):
     #
     # Overrided GymEnv methods for compatibility with MujocoEnv methods
 
-    def step(self, action, wait=True):
-        start = time.time()
+    def step(self, action, wait=False):
         assert self._episode_step is not None, 'Must reset before step!'
         # TODO: Send commands to both arms simultaneously?
         for command_type, command_val in action['right'].items():
             getattr(self.interface_right, command_type)(**command_val)
-        for command_type, command_val in action['left'].items():
-            getattr(self.interface_left, command_type)(**command_val)
+        if not TEMP_DISABLE_LEFT_ARM:
+            for command_type, command_val in action['left'].items():
+                getattr(self.interface_left, command_type)(**command_val)
         self._episode_step += 1
-        self.rate.sleep()
+
+        self.run_before_rate_sleep_return = self._run_before_rate_sleep_func() # run _run_before_rate_sleep_func
+        lag_occurred = self.rate.sleep()
+        self.run_before_rate_sleep() # clear _run_before_rate_sleep_func
+
+        # self.interface_right.log('rate.sleep()') ## TEMP TIMESTAMPING
         ob = self._get_obs(wait=wait)
+        # self.interface_right.log('_get_obs() for s\'') ## TEMP TIMESTAMPING
         reward = 1.0
         done = False
-        finish = time.time()
-        if finish - start > 1.5/self.rate._freq:
-            warnings.warn('Desired rate of %dHz is not satisfied! (current rate: %dHz)'%(self.rate._freq, 1/(finish-start)))
-        return ob, reward, done, {}
+        if lag_occurred:
+            warnings.warn('Desired rate of %dHz is not satisfied! (current rate: %dHz)'%(self.rate._freq, 1/(self.rate._actual_cycle_time) ))
+        controller_error = lambda stats: np.any([(stat.safety.StoppedDueToSafety) or (not stat.robot.PowerOn) for stat in stats])
+        if not TEMP_DISABLE_LEFT_ARM:
+            if controller_error([self.interface_right.get_controller_status(), self.interface_left.get_controller_status()]):
+                done_info = self._recover_from_controller_error()
+                return ob, reward, True, done_info
+            else:
+                return ob, reward, done, {}
+        else:
+            if controller_error([self.interface_right.get_controller_status()]):
+                done_info = self._recover_from_controller_error()
+                return ob, reward, True, done_info
+            else:
+                return ob, reward, done, {}
+    
+    def run_before_rate_sleep(self, func=lambda: {}):
+        self._run_before_rate_sleep_func = func
 
     def reset(self):
         # TODO: Send commands to both arms simultaneously?
-        self.interface_right.reset_controller()
-        self.interface_left.reset_controller()
+        self.interface_right.stopj(a=5, wait=True) # prevent protecive stop(invalid setpoints: sudden stop) error
+        if not TEMP_DISABLE_LEFT_ARM:
+            self.interface_left.stopj(a=5, wait=True) # prevent protecive stop(invalid setpoints: sudden stop) error
+        controller_error = lambda stats: np.any([(stat.safety.StoppedDueToSafety) or (not stat.robot.PowerOn) for stat in stats])
+        if not TEMP_DISABLE_LEFT_ARM:
+            if controller_error([self.interface_right.get_controller_status(), self.interface_left.get_controller_status()]):
+                self._recover_from_controller_error()
+        else:
+            if controller_error([self.interface_right.get_controller_status()]):
+                self._recover_from_controller_error()
         ob = self.reset_model()
         self.rate.reset()
         return ob
+
+    def _recover_from_controller_error(self):
+        status_right = self.interface_right.get_controller_status()
+        status_left = self.interface_left.get_controller_status()
+        robot_right =[attr for attr in dir(status_right.robot) if getattr(status_right.robot, attr)==True]
+        safety_right = [attr for attr in dir(status_right.safety) if getattr(status_right.safety, attr)==True]
+        robot_left = [attr for attr in dir(status_left.robot) if getattr(status_left.robot, attr)==True]
+        safety_left = [attr for attr in dir(status_left.safety) if getattr(status_left.safety, attr)==True]
+        status_info = {
+            'real_env': True,
+            'error_flags_right': robot_right + safety_right,
+            'error_flags_left': robot_left + safety_left
+        }
+        warnings.warn('UR3 controller error! %s'%(status_info))
+        print('Resetting UR3 controller...')
+        for _ in range(2): # sometimes require 2 calls
+            right_reset_done = self.interface_right.reset_controller()
+            if not TEMP_DISABLE_LEFT_ARM:
+                left_reset_done = self.interface_left.reset_controller()
+            else:
+                left_reset_done = True
+        if (not right_reset_done) or (not left_reset_done):
+            while (not right_reset_done) or (not left_reset_done):
+                status_right = self.interface_right.get_controller_status()
+                status_left = self.interface_left.get_controller_status()
+                robot_right =[attr for attr in dir(status_right.robot) if getattr(status_right.robot, attr)==True]
+                safety_right = [attr for attr in dir(status_right.safety) if getattr(status_right.safety, attr)==True]
+                robot_left = [attr for attr in dir(status_left.robot) if getattr(status_left.robot, attr)==True]
+                safety_left = [attr for attr in dir(status_left.safety) if getattr(status_left.safety, attr)==True]
+                print('Failed to reset UR3 controller. Manual reset is required.')
+                print('ERR_FLAGS: \r\n right - %s, %s \r\n left - %s, %s'%(robot_right, safety_right, robot_left, safety_left))
+                # beepy.beep('error')
+                if prompt_yes_or_no("Press 'Y' after manual reset to proceed. Press 'n' to terminate program.") is False:
+                    print('exiting program!')
+                    sys.exit()
+                right_reset_done = self.interface_right.reset_controller()
+                if not TEMP_DISABLE_LEFT_ARM:
+                    left_reset_done = self.interface_left.reset_controller()
+                else:
+                    left_reset_done = True
+            print('UR3 controller manual reset ok')
+        else:
+            print('UR3 controller reset ok')
+        return status_info
 
     def render(self, mode='human'):
         warnings.warn('Real environment. "Render" with your own two eyes!')
@@ -258,19 +364,53 @@ class DualUR3RealEnv(gym_custom.Env):
 
     def reset_model(self):
         #dscho mod
-        self._episode_step = 0
-        self.step({'right' :{'open_gripper' : {}} , 'left' : {'open_gripper' : {}}})
-        time.sleep(2.0)
+        # self._episode_step = 0
+        # self.step({'right' :{'open_gripper' : {}} , 'left' : {'open_gripper' : {}}})
+        # time.sleep(2.0)
 
         # TODO: Send commands to both arms simultaneously?
-        self.interface_right.movej(q=self._init_qpos[:6])
-        self.interface_left.movej(q=self._init_qpos[6:])
+        controller_error = lambda stats: np.any([(stat.safety.StoppedDueToSafety) or (not stat.robot.PowerOn) for stat in stats])
+        movej_success = False
+        while not movej_success:
+            try:
+                self.interface_right.movej(q=self._init_qpos[:6])
+                if not TEMP_DISABLE_LEFT_ARM:
+                    self.interface_left.movej(q=self._init_qpos[6:])
+                for _ in range(2):
+                    obs_dict = self.get_obs_dict()
+                    movej_success = np.linalg.norm(obs_dict['right']['qpos'] - self._init_qpos[:6], np.inf) < np.deg2rad(3)
+                    if movej_success: break
+                    time.sleep(0.1)
+                    self.interface_right.movej(q=self._init_qpos[:6])
+                    if not TEMP_DISABLE_LEFT_ARM:
+                        self.interface_left.movej(q=self._init_qpos[6:])
+                if not movej_success:
+                    print('movej of reset_model did not register for some reason..')
+                    # beepy.beep('error')
+                    if prompt_yes_or_no("Press 'Y' to resend movej command. Press 'n' to terminate program.") is False:
+                        print('exiting program!')
+                        sys.exit()
+            except Exception as e:
+                print('hardware error during movej of reset_model')
+                traceback.print_exc()
+                if not TEMP_DISABLE_LEFT_ARM:
+                    if controller_error([self.interface_right.get_controller_status(), self.interface_left.get_controller_status()]):
+                        self._recover_from_controller_error()
+                else:
+                    if controller_error([self.interface_right.get_controller_status()]):
+                        self._recover_from_controller_error()
+                # beepy.beep('error')
+                if prompt_yes_or_no("Press 'Y' after untangling robot arms. Press 'n' to terminate program.") is False:
+                    print('exiting program!')
+                    sys.exit()
+            
         self.interface_right.move_gripper(g=self._init_gripperpos[:1])
-        self.interface_left.move_gripper(g=self._init_gripperpos[1:])
-        # self._episode_step = 0
+        if not TEMP_DISABLE_LEFT_ARM:
+            self.interface_left.move_gripper(g=self._init_gripperpos[1:])
+        self._episode_step = 0
         return self._get_obs()
 
-    def get_obs_dict(self, wait=True):
+    def get_obs_dict(self, wait=False):
         return {'right': {
                 'qpos': self.interface_right.get_joint_positions(wait=wait),
                 'qvel': self.interface_right.get_joint_speeds(wait=wait),
@@ -278,14 +418,14 @@ class DualUR3RealEnv(gym_custom.Env):
                 'grippervel': self.interface_right.get_gripper_speed()
             },
             'left': {
-                'qpos': self.interface_left.get_joint_positions(wait=wait), 
+                'qpos': self.interface_left.get_joint_positions(wait=wait),
                 'qvel': self.interface_left.get_joint_speeds(wait=wait),
                 'gripperpos': self.interface_left.get_gripper_position(),
                 'grippervel': self.interface_left.get_gripper_speed()
             }
         }
 
-    def _get_obs(self, wait=True):
+    def _get_obs(self, wait=False):
         return self._dict_to_nparray(self.get_obs_dict(wait=wait))
 
     @staticmethod

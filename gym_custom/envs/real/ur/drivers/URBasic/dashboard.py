@@ -325,6 +325,26 @@ class DashBoard(threading.Thread):
         '''
         self.__send('load installation '+ instal +'\n')
 
+    def ur_restart_safety(self):
+        '''
+        Used when robot gets a safety fault or violation to restart
+        the safety. After safety has been rebooted the robot will
+        be in Power Off.
+        '''
+        self.__send('restart safety\n')
+
+    def ur_get_serial_number(self):
+        '''
+        Returns serial number of the robot.
+        '''
+        self.__send('get serial number\n')
+
+    def ur_get_robot_model(self):
+        '''
+        Returns the robot model
+        '''
+        self.__send('get robot model\n')
+
         
     
         

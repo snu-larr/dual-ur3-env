@@ -1,22 +1,30 @@
 from contextlib import closing
+from inputimeout import inputimeout, TimeoutOccurred
 import socket
 import sys
 import time
 
 ## Functions
 
-def prompt_yes_or_no(query):
-    YES = {'y', 'yes'}
-    NO = {'n', 'no'}
+def prompt_yes_or_no(query, timed=False, timeout=30, default_response=None):
     while True:
-        sys.stdout.write(query + ' [Y/n] ')
-        response = input().lower()
-        if response in YES:
+        if timed: # inputimeout does NOT work when called from a subprocess!
+            assert default_response is not None
+            try:
+                response = inputimeout(prompt=query + ' (timeout in %ds) [Y/n] '%(timeout), timeout=timeout).lower()
+            except TimeoutOccurred:
+                response = default_response
+        else:
+            if default_response is None:
+                response = input(query + ' [Y/n] ').lower()
+            else:
+                response = default_response 
+        if response in {'y', 'yes'}:
             return True
-        elif response in NO:
+        elif response in {'n', 'no'}:
             return False
         else:
-            sys.stdout.write('Invalid response!\n')
+            print('Invalid response!\n')
 
 def find_free_port():
     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:

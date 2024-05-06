@@ -240,7 +240,7 @@ class URScriptWrapper(ActionWrapper):
         # rescale = min(scale_lower, scale_upper, 1)
         rescale = 1
 
-        action = rescale*PID_control + bias - constraint
+        action = rescale*PID_control + bias - constraint*0
         return action, 'ur3'
 
     # def speedj(self, qd, a, t , wait=True): # as defined in UR Script
@@ -278,7 +278,7 @@ class URScriptWrapper(ActionWrapper):
         # rescale = min(scale_lower, scale_upper, 1)
         rescale = 1
 
-        action = rescale*PI_control + bias - constraint
+        action = rescale*PI_control + bias - constraint*0
         return action, 'ur3'
 
     def speedl(self, *args, **kwargs):

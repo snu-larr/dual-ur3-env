@@ -1,0 +1,290 @@
+#!/bin/bash
+#
+# Copyright (c) 2016, crasm <crasm@vczf.io>
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+
+usage="usage: vpnshift -c <config> -i <interface> [<command> [<arg>...]]
+optional:
+	-u <user>      Execute <command> as <user>
+	-d             Toggle namespace debug shell
+
+if not otherwise specified:
+	- The command defaults to the user's shell (${SHELL}).
+	- The user must be inferred from sudo.
+"
+
+quick_die() {
+	format="$1"; shift
+	>&2 printf "${format}\n" "$@"
+	exit 1
+}
+
+die() {
+	format="$1"; shift
+	>&2 printf "${format}\n" "$@"
+	clean_exit 1
+}
+
+hush() {
+	eval "$@" > /dev/null 2> /dev/null
+}
+
+must() {
+	eval "$@" || die "failed: %s" "$*"
+}
+
+is_running() {
+	local pid="$1"
+	hush kill -s 0 "${pid}"
+}
+
+sig_kill() {
+	local pid="$1"
+	hush kill -s KILL "${pid}"
+}
+
+sig_term() {
+	local pid="$1"
+	hush kill -s TERM "${pid}"
+}
+
+clean_exit() {
+	local exit_code="$1"
+
+	if is_running "${openvpn_pid}"; then
+		# Kill openvpn.
+		sig_term "${openvpn_pid}"
+		>&2 printf "stopping openvpn (pid = %d)." "${openvpn_pid}"
+		for i in {1..100}; do
+			if is_running "${openvpn_pid}"; then
+				sleep 0.1
+				printf "."
+			else
+				break
+			fi
+		done
+		printf "\n"
+
+		if is_running "${openvpn_pid}"; then
+			>&2 echo "forced to kill openvpn"
+			sig_kill "${openvpn_pid}"
+		fi
+	else
+		>&2 echo "openvpn exited"
+	fi
+
+	# cleanup ufw
+	if which ufw && [[ $(ufw status | head -n 1) == *active ]]; then
+		ufw route delete allow in on "${veth_default}" out on "${interface}" &>/dev/null
+	fi
+
+	# don't start cleaning up until openvpn is gone
+	hush ip netns delete "${namespace}"
+	hush rm --recursive --force "${namespace_dir}"
+	hush sysctl --quiet net.ipv4.ip_forward="${forward}"
+	if hush ps -C 'firewalld'; then
+		echo "[firewalld] clearing firewalld state"
+		hush systemctl restart firewalld
+	else
+		echo "${rules}" | hush iptables-restore
+	fi
+
+	# Sometimes there's a lag for the veths to be deleted by linux, so we
+	# delete it manually.
+	hush ip link delete "${veth_default}"
+	hush ip link delete "${veth_vpn}"
+
+	exit "${exit_code}"
+}
+
+nsdo() {
+	ip netns exec "${namespace}" "$@"
+}
+
+_debug=0
+
+main() {
+	local config=
+	local user="${SUDO_USER}"
+	while getopts "hdc:i:u:" opt; do
+		case "${opt}" in
+			h) quick_die "${usage}" ;;
+			d) _debug=1 ;;
+			c) config="$(realpath "${OPTARG}")" ;;
+			i) interface="${OPTARG}" ;;
+			u) user="${OPTARG}" ;;
+			*) quick_die "unknown option: %s" "${opt}" ;;
+		esac
+	done
+	shift $(( OPTIND - 1 ))
+
+	if [[ -z "${config}" ]]; then
+		quick_die "openvpn config is required"
+	fi
+
+	if [[ -z "${interface}" ]]; then
+		quick_die "physical interface required to send packets through ufw"
+	fi
+
+	if [[ -z "${user}" ]]; then
+		quick_die "user must be provided explicitly via '-u' or implicitly via SUDO_USER"
+	fi
+
+	local cmd="$1"; shift
+
+	if [[ -z "${cmd}" ]]; then
+		cmd="${SHELL}"
+	fi
+
+	must ip netns add vpnshift
+	must mkdir --parents "${namespace_dir}"
+
+	# Set up loopback interface
+
+	must nsdo ip address add '127.0.0.1/8' dev lo
+	must nsdo ip address add '::1/128' dev lo
+	must nsdo ip link set lo up
+
+	# Set up veth tunnel
+
+	must ip link add "${veth_vpn}" type veth peer name "${veth_default}"
+	must ip link set "${veth_vpn}" netns "${namespace}"
+
+	must ip link set "${veth_default}" up
+	must nsdo ip link set "${veth_vpn}" up
+
+	must ip address add "10.10.10.10/31" dev "${veth_default}"
+	must nsdo ip \
+		address add "10.10.10.11/31" dev "${veth_vpn}"
+
+	must nsdo ip \
+		route add default via "10.10.10.10" dev "${veth_vpn}"
+
+	# Set up NAT and IP forwarding
+	must sysctl --quiet net.ipv4.ip_forward=1
+
+	# check if we need to enable masquerading via firewalld for veth_default
+	if hush ps -C 'firewalld'; then
+		echo "[firewalld] enabling firewalld based masquerading for ${veth_default}"
+
+		if [[ $(firewall-cmd --get-zones | grep "${namespace}") != *"${namespace}"* ]]
+		then
+			echo "[firewalld] creating permanent new zone ${namespace} with target default"
+			must firewall-cmd -q --permanent --new-zone="${namespace}"
+			must firewall-cmd -q --permanent --zone="${namespace}" --set-target="default"
+			must firewall-cmd -q --reload
+		fi
+
+		# add interface to our zone
+		echo "[firewalld] adding ${veth_default} and ${veth_vpn} to zone ${namespace}"
+		must firewall-cmd -q --zone="${namespace}" --change-interface="${veth_default}"
+
+		# apply our source range to our zone
+		echo "[firewalld] adding 10.10.10.10/31 as source for ${namespace}"
+		must firewall-cmd -q --zone="${namespace}" --add-source=10.10.10.10/31
+
+		# enable masquerading from our new source range on the default zone
+		default_zone=$(firewall-cmd --get-default-zone)
+		echo "[firewalld] enabling masquerading on default zone: ${default_zone}"
+		must firewall-cmd -q --zone="${default_zone}" --add-masquerade
+		must firewall-cmd -q --zone="${default_zone}"  --add-rich-rule=\'rule family="ipv4" source address="10.10.10.10/31" masquerade\'
+
+		# optionally allow ports, services, etc. on our zone
+
+		# enabling desired ports
+		#echo "enabling all port traffic on zone ${namespace}"
+		#must firewall-cmd -q --zone="${namespace}" --add-port=1025-65535/udp
+		#must firewall-cmd -q --zone="${namespace}" --add-port=1025-65535/tcp
+
+		# enable services
+		#echo "enabling dns on zone ${namespace}"
+		#must firewall-cmd -q --zone="${namespace}" --add-service=dns
+
+	else
+		must iptables --table "nat" --append "POSTROUTING" --jump "MASQUERADE" --source "10.10.10.10/31"
+	fi
+
+	# Set up DNS inside the new namespace
+	printf > "${namespace_dir}/resolv.conf" \
+		"nameserver %s\nnameserver %s\n" \
+		"1.1.1.1" \
+		"1.0.0.1"
+
+	# allow packets to flow through ufw
+	if which ufw && [[ $(ufw status | head -n 1) == *active ]]; then
+		ufw route allow in on "${veth_default}" out on "${interface}"
+	fi
+
+	# drop in a shell to debug namespace connectivity ... the exit trap will catch exit from this and clean up
+	if [[ "$_debug" == 1 ]]; then
+		nsdo "${SHELL}"
+	fi
+
+	# Launch openvpn
+	local tun="tunvpn"
+	nsdo openvpn \
+		--cd "$(dirname "${config}")" \
+		--config "${config}" \
+		--dev "${tun}" \
+		--errors-to-stderr \
+		--daemon \
+		--writepid "openvpn.pid"
+	
+	openvpn_pid=$(<$(dirname "${config}")/openvpn.pid)
+	# openvpn_pid=$(ps --ppid "$!" \
+	# 	--format "pid" \
+	# 	--no-headers
+	# )
+
+	>&2 printf "waiting for openvpn (pid = %d)\n" "${openvpn_pid}"
+	
+	# systemd-tty-ask-password-agent
+	# sleep 0.3
+	# systemd-tty-ask-password-agent
+
+	while ! hush nsdo ip link show "${tun}" || ! is_running "${openvpn_pid}" ; do
+		sleep 0.1
+	done
+
+	# Removing the default route protects from exposure if openvpn exits
+	# prematurely.
+	must nsdo ip \
+		route delete default via "10.10.10.10" dev "${veth_vpn}"
+
+	nsdo sudo -u "${user}" "${cmd}" "$@"
+}
+
+if [[ $# == 0 ]]; then
+	quick_die "${usage}"
+elif [[ "$(id -u)" != 0 ]]; then
+	sudo "$0" "$@"
+	exit "$?"
+fi
+
+# Stuff needed by clean_exit() to restore previous state.
+namespace="vpnshift"
+namespace_dir="/etc/netns/${namespace}"
+forward="$(sysctl --values "net.ipv4.ip_forward")"
+rules="$(iptables-save -t nat)"
+veth_default="veth_default"
+veth_vpn="veth_vpn"
+
+openvpn_pid= # This is set later.
+
+# Enable cleanup routine.
+trap 'clean_exit 1' INT TERM
+trap 'clean_exit $?' EXIT
+
+main "$@"

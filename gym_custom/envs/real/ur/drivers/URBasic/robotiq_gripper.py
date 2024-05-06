@@ -4,7 +4,7 @@ import socket
 import threading
 import time
 from enum import Enum
-from typing import Union, Tuple, OrderedDict
+from collections import OrderedDict
 
 class RobotiqGripper:
     """
@@ -51,7 +51,8 @@ class RobotiqGripper:
         self._min_force = 0
         self._max_force = 255
 
-    def connect(self, hostname: str, port: int, socket_timeout: float = 2.0) -> None:
+    # def connect(self, hostname: str, port: int, socket_timeout: float = 2.0) -> None:
+    def connect(self, hostname, port, socket_timeout=2.0):
         """Connects to a gripper at the given address.
         :param hostname: Hostname or ip.
         :param port: Port.
@@ -61,11 +62,13 @@ class RobotiqGripper:
         self.socket.connect((hostname, port))
         self.socket.settimeout(socket_timeout)
 
-    def disconnect(self) -> None:
+    # def disconnect(self) -> None:
+    def disconnect(self):
         """Closes the connection with the gripper."""
         self.socket.close()
 
-    def _set_vars(self, var_dict: OrderedDict[str, Union[int, float]]):
+    # def _set_vars(self, var_dict: OrderedDict[str, Union[int, float]]):
+    def _set_vars(self, var_dict):
         """Sends the appropriate command via socket to set the value of n variables, and waits for its 'ack' response.
         :param var_dict: Dictionary of variables to set (variable_name, value).
         :return: True on successful reception of ack, false if no ack was received, indicating the set may not
@@ -74,7 +77,8 @@ class RobotiqGripper:
         # construct unique command
         cmd = "SET"
         for variable, value in var_dict.items():
-            cmd += f" {variable} {str(value)}"
+            # cmd += f" {variable} {str(value)}"
+            cmd += " {} {}".format(variable, str(value)) # for compatibility with lower versions of python
         cmd += '\n'  # new line is required for the command to finish
         # atomic commands send/rcv
         with self.command_lock:
@@ -82,7 +86,8 @@ class RobotiqGripper:
             data = self.socket.recv(1024)
         return self._is_ack(data)
 
-    def _set_var(self, variable: str, value: Union[int, float]):
+    # def _set_var(self, variable: str, value: Union[int, float]):
+    def _set_var(self, variable, value):
         """Sends the appropriate command via socket to set the value of a variable, and waits for its 'ack' response.
         :param variable: Variable to set.
         :param value: Value to set for the variable.
@@ -91,7 +96,8 @@ class RobotiqGripper:
         """
         return self._set_vars(OrderedDict([(variable, value)]))
 
-    def _get_var(self, variable: str):
+    # def _get_var(self, variable: str):
+    def _get_var(self, variable):
         """Sends the appropriate command to retrieve the value of a variable from the gripper, blocking until the
         response is received or the socket times out.
         :param variable: Name of the variable to retrieve.
@@ -99,7 +105,8 @@ class RobotiqGripper:
         """
         # atomic commands send/rcv
         with self.command_lock:
-            cmd = f"GET {variable}\n"
+            # cmd = f"GET {variable}\n"
+            cmd = "GET {}\n".format(variable) # for compatibility with lower versions of python
             self.socket.sendall(cmd.encode(self.ENCODING))
             data = self.socket.recv(1024)
 
@@ -107,12 +114,14 @@ class RobotiqGripper:
         # note some special variables (like FLT) may send 2 bytes, instead of an integer. We assume integer here
         var_name, value_str = data.decode(self.ENCODING).split()
         if var_name != variable:
-            raise ValueError(f"Unexpected response {data} ({data.decode(self.ENCODING)}): does not match '{variable}'")
+            # raise ValueError(f"Unexpected response {data} ({data.decode(self.ENCODING)}): does not match '{variable}'")
+            raise ValueError("Unexpected response {} ({}): does not match '{}'".format(data, data.decode(self.ENCODING), variable)) # for compatibility with lower versions of python
         value = int(value_str)
         return value
 
     @staticmethod
-    def _is_ack(data: str):
+    # def _is_ack(data: str):
+    def _is_ack(data):
         return data == b'ack'
 
     def _reset(self):
@@ -140,7 +149,8 @@ class RobotiqGripper:
         time.sleep(0.5)
 
 
-    def activate(self, auto_calibrate: bool = True):
+    # def activate(self, auto_calibrate: bool = True):
+    def activate(self, auto_calibrate=True):
         """Resets the activation flag in the gripper, and sets it back to one, clearing previous fault flags.
         :param auto_calibrate: Whether to calibrate the minimum and maximum positions based on actual motion.
         The following code is executed in the corresponding script function
@@ -188,19 +198,23 @@ class RobotiqGripper:
         status = self._get_var(self.STA)
         return RobotiqGripper.GripperStatus(status) == RobotiqGripper.GripperStatus.ACTIVE
 
-    def get_min_position(self) -> int:
+    # def get_min_position(self) -> int:
+    def get_min_position(self):
         """Returns the minimum position the gripper can reach (open position)."""
         return self._min_position
 
-    def get_max_position(self) -> int:
+    # def get_max_position(self) -> int:
+    def get_max_position(self):
         """Returns the maximum position the gripper can reach (closed position)."""
         return self._max_position
 
-    def get_open_position(self) -> int:
+    # def get_open_position(self) -> int:
+    def get_open_position(self):
         """Returns what is considered the open position for gripper (minimum position value)."""
         return self.get_min_position()
 
-    def get_closed_position(self) -> int:
+    # def get_closed_position(self) -> int:
+    def get_closed_position(self):
         """Returns what is considered the closed position for gripper (maximum position value)."""
         return self.get_max_position()
 
@@ -212,37 +226,43 @@ class RobotiqGripper:
         """Returns whether the current position is considered as being fully closed."""
         return self.get_current_position() >= self.get_closed_position()
 
-    def get_current_position(self) -> int:
+    # def get_current_position(self) -> int:
+    def get_current_position(self):
         """Returns the current position as returned by the physical hardware."""
         return self._get_var(self.POS)
 
-    def auto_calibrate(self, log: bool = True) -> None:
+    # def auto_calibrate(self, log: bool = True) -> None:
+    def auto_calibrate(self, log=True):
         """Attempts to calibrate the open and closed positions, by slowly closing and opening the gripper.
         :param log: Whether to print the results to log.
         """
         # first try to open in case we are holding an object
         (position, status) = self.move_and_wait_for_pos(self.get_open_position(), 64, 1)
         if RobotiqGripper.ObjectStatus(status) != RobotiqGripper.ObjectStatus.AT_DEST:
-            raise RuntimeError(f"Calibration failed opening to start: {str(status)}")
-
+            # raise RuntimeError(f"Calibration failed opening to start: {str(status)}")
+            raise RuntimeError("Calibration failed opening to start: {}".format(str(status))) # for compatibility with lower versions of python
         # try to close as far as possible, and record the number
         (position, status) = self.move_and_wait_for_pos(self.get_closed_position(), 64, 1)
         if RobotiqGripper.ObjectStatus(status) != RobotiqGripper.ObjectStatus.AT_DEST:
-            raise RuntimeError(f"Calibration failed because of an object: {str(status)}")
+            # raise RuntimeError(f"Calibration failed because of an object: {str(status)}")
+            raise RuntimeError("Calibration failed because of an object: {}".format(str(status))) # for compatibility with lower versions of python
         assert position <= self._max_position
         self._max_position = position
 
         # try to open as far as possible, and record the number
         (position, status) = self.move_and_wait_for_pos(self.get_open_position(), 64, 1)
         if RobotiqGripper.ObjectStatus(status) != RobotiqGripper.ObjectStatus.AT_DEST:
-            raise RuntimeError(f"Calibration failed because of an object: {str(status)}")
+            # raise RuntimeError(f"Calibration failed because of an object: {str(status)}")
+            raise RuntimeError("Calibration failed because of an object: {}".format(str(status))) # for compatibility with lower versions of python
         assert position >= self._min_position
         self._min_position = position
 
         if log:
-            print(f"Gripper auto-calibrated to [{self.get_min_position()}, {self.get_max_position()}]")
+            # print(f"Gripper auto-calibrated to [{self.get_min_position()}, {self.get_max_position()}]")
+            print("Gripper auto-calibrated to [{}, {}]".format(self.get_min_position(), self.get_max_position())) # for compatibility with lower versions of python
 
-    def move(self, position: int, speed: int, force: int) -> Tuple[bool, int]:
+    # def move(self, position: int, speed: int, force: int) -> Tuple[bool, int]:
+    def move(self, position, speed, force):
         """Sends commands to start moving towards the given position, with the specified speed and force.
         :param position: Position to move to [min_position, max_position]
         :param speed: Speed to move at [min_speed, max_speed]
@@ -262,7 +282,8 @@ class RobotiqGripper:
         var_dict = OrderedDict([(self.POS, clip_pos), (self.SPE, clip_spe), (self.FOR, clip_for), (self.GTO, 1)])
         return self._set_vars(var_dict), clip_pos
 
-    def move_and_wait_for_pos(self, position: int, speed: int, force: int) -> Tuple[int, ObjectStatus]:  # noqa
+    # def move_and_wait_for_pos(self, position: int, speed: int, force: int) -> Tuple[int, ObjectStatus]:  # noqa
+    def move_and_wait_for_pos(self, position, speed, force):
         """Sends commands to start moving towards the given position, with the specified speed and force, and
         then waits for the move to complete.
         :param position: Position to move to [min_position, max_position]

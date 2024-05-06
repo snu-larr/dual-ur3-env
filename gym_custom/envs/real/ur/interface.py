@@ -1,4 +1,5 @@
 from collections import OrderedDict
+from types import SimpleNamespace
 import numpy as np
 
 import gym_custom
@@ -49,10 +50,27 @@ def convert_observation_to_space(observation):
 
 class URScriptInterface(object):
     
-    def __init__(self, host_ip):
+    def __init__(self, host_ip, alias=''):
+        
+        # gripper_kwargs = {
+        #     'robot': None,
+        #     'payload': 0.85,
+        #     'speed': 255, # 0~255
+        #     'force': 255,  # 0~255
+        #     'socket_host': host_ip,
+        #     'socket_name': 'gripper_socket'
+        # }
 
         self.model = URBasic.robotModel.RobotModel()
+        # self.comm = URBasic.urScriptExt.UrScriptExt(host=host_ip, robotModel=self.model, **gripper_kwargs)
+        # latest dscho modified (2021 0723)
         self.comm = URBasic.urScriptExt.UrScriptExt(host=host_ip, robotModel=self.model)
+        self.alias = alias
+
+        logger = URBasic.dataLogging.DataLogging()
+        name = logger.AddEventLogging(__name__)
+        self.__logger = logger.__dict__[name]
+        self.log('init done')
 
     def __del__(self):
         self.comm.close()
@@ -60,9 +78,22 @@ class URScriptInterface(object):
     def close(self):
         self.comm.close()
 
+    ## UR Logger
+    def log(self, msg, level='INFO'):
+        assert type(msg) == str, 'log message must be string'
+        if level == 'INFO': self.__logger.info('[%s] '%(self.alias) + msg)
+        elif level == 'DEBUG': self.__logger.debug('[%s] '%(self.alias) + msg)
+        elif level == 'ERROR': self.__logger.error('[%s] '%(self.alias) + msg)
+        else: pass
+
     ## UR Controller
     def reset_controller(self):
-        self.comm.reset_error()
+        return self.comm.reset_error(tsleep=0)
+
+    def get_controller_status(self):
+        robot_status = self.comm.robotConnector.RobotModel.RobotStatus()
+        safety_status = self.comm.robotConnector.RobotModel.SafetyStatus()
+        return SimpleNamespace(robot=robot_status, safety=safety_status)
 
     ## UR3 manipulator
     def movej(self, q=None, a=1.4, v =1.05, t =0, r =0, wait=True, pose=None):
@@ -113,10 +144,16 @@ class URScriptInterface(object):
         raise NotImplementedError()
 
     def get_joint_positions(self, *args, **kwargs):
-        return np.array(self.comm.get_actual_joint_positions(*args, **kwargs))
+        # self.log('Reading joint positions...')
+        joint_pos = np.array(self.comm.get_actual_joint_positions(*args, **kwargs))
+        # self.log('Obtained joint positions')
+        return joint_pos
 
     def get_joint_speeds(self, *args, **kwargs):
-        return np.array(self.comm.get_actual_joint_speeds(*args, **kwargs))
+        # self.log('Reading joint speeds...')
+        joint_speed = np.array(self.comm.get_actual_joint_speeds(*args, **kwargs))
+        # self.log('Obtained joint speeds')
+        return joint_speed
 
     ## 2F-85 gripper
     '''
@@ -129,12 +166,8 @@ class URScriptInterface(object):
         self.move_gripper_position(g=0, *args, **kwargs)
 
     def close_gripper(self, *args, **kwargs):
-        # self.comm.operate_gripper(255) # dscho mod, it was 255
-        # self.comm.force_gripper(172) #172 for bar 62 for cylinder
+        # self.comm.operate_gripper(255)
         self.move_gripper_position(g=255, *args, **kwargs)
-    
-    # def force_gripper(self, pos):
-    #     self.comm.force_gripper(pos)
 
     def move_gripper(self, *args, **kwargs):
         '''Compatibility wrapper for move_gripper_position()'''
@@ -167,6 +200,7 @@ class URScriptInterface(object):
 
     def get_gripper_position(self):
         # TODO: dscho
+        # return np.array([0.0])
         return np.array([self.comm.get_gripper_position()])
 
     def get_gripper_speed(self):
