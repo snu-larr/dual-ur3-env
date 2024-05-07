@@ -100,6 +100,9 @@ class UR3RealEnv(gym_custom.Env):
         self._run_before_rate_sleep_func = func
 
     def reset(self):
+        # dscho added
+        self.interface.stopj(a=5, wait=True) # prevent protecive stop(invalid setpoints: sudden stop) error
+        
         controller_error = lambda status: (status.safety.StoppedDueToSafety) or (not status.robot.PowerOn)
         if controller_error(self.interface.get_controller_status()):
             self._recover_from_controller_error()
@@ -143,7 +146,8 @@ class UR3RealEnv(gym_custom.Env):
         self.interface.close()
 
     def reset_model(self):
-        self.interface.movej(q=self._init_qpos)
+        # dscho commented to make same as dual_ur3_env.py
+        # self.interface.movej(q=self._init_qpos)
 
         controller_error = lambda stats: np.any([(stat.safety.StoppedDueToSafety) or (not stat.robot.PowerOn) for stat in stats])
         movej_success = False
@@ -152,7 +156,7 @@ class UR3RealEnv(gym_custom.Env):
                 self.interface.movej(q=self._init_qpos[:6])
                 for _ in range(2):
                     obs_dict = self.get_obs_dict()
-                    movej_success = np.linalg.norm(obs_dict['right']['qpos'] - self._init_qpos[:6], np.inf) < np.deg2rad(3)
+                    movej_success = np.linalg.norm(obs_dict['qpos'] - self._init_qpos[:6], np.inf) < np.deg2rad(3)
                     if movej_success: break
                     time.sleep(0.1)
                     self.interface.movej(q=self._init_qpos[:6])
@@ -176,16 +180,16 @@ class UR3RealEnv(gym_custom.Env):
         self._episode_step = 0
         return self._get_obs()
 
-    def get_obs_dict(self):
+    def get_obs_dict(self, wait=False):
         return {
-            'qpos': self.interface.get_joint_positions(),
-            'qvel': self.interface.get_joint_speeds(),
+            'qpos': self.interface.get_joint_positions(wait=wait),
+            'qvel': self.interface.get_joint_speeds(wait=wait),
             'gripperpos': self.interface.get_gripper_position(),
             'grippervel': self.interface.get_gripper_speed()
         }
 
-    def _get_obs(self):
-        return self._dict_to_nparray(self.get_obs_dict())
+    def _get_obs(self, wait=False):
+        return self._dict_to_nparray(self.get_obs_dict(wait=wait))
 
     @staticmethod
     def _dict_to_nparray(obs_dict):
@@ -633,6 +637,6 @@ def simple_gripper_example(host_ip, rate):
 if __name__ == "__main__":
     # sanity_check(host_ip='192.168.5.101')
     # gripper_check(host_ip='192.168.5.101')
-    # servoj_speedj_example(host_ip='192.168.5.101', rate=25)
+    servoj_speedj_example(host_ip='192.168.5.102', rate=25)
     # simple_gripper_example(host_ip='192.168.5.101', rate=25)
     pass
