@@ -1702,7 +1702,8 @@ class DSCHOSingleUR3GoalMocapEnv(DSCHODualUR3MocapEnv):
         
         self.set_state(qpos, qvel)
         # set state하면 site pos도 다 초기화됨! #TODO: 이 부분은 wrapper에 있을 함수가 아님!
-        self._set_goal_marker(self._state_goal)
+        if not self.task in ['peg', 'sweep']:
+            self._set_goal_marker(self._state_goal)
         # self._set_subgoal_marker(self._state_subgoals)
         # self._set_finalgoal_marker(self._state_finalgoal)
         # print('env state goal : {}'.format(self.env._state_goal))
@@ -2243,8 +2244,9 @@ class DSCHOSingleUR3GoalMocapMultiObjectEnv(DSCHOSingleUR3GoalMocapEnv):
         #         ord=1, axis = -1
         #     )})
         self.info = copy.deepcopy(info)
-
-        self._set_goal_marker(self._state_goal)
+        
+        if not self.task in ['peg', 'sweep']:
+            self._set_goal_marker(self._state_goal)
         self.curr_path_length = 0
         return observation
         
