@@ -63,7 +63,7 @@ class UrScriptExt(URBasic.urScript.UrScript):
 
 
     # def __init__(self, host, robotModel, hasForceTorque=False): dscho modified
-    def __init__(self, host, robotModel, hasForceTorque=False): 
+    def __init__(self, host, robotModel, hasForceTorque=False, auto_calibrate=True): 
         if host is None: #Only for enable code completion
             return
         super(UrScriptExt, self).__init__(host, robotModel, hasForceTorque)        
@@ -80,7 +80,7 @@ class UrScriptExt(URBasic.urScript.UrScript):
         # latest dscho modified (2021 0723)
         self.robotiq_gripper = URBasic.robotiq_gripper.RobotiqGripper()
         self.robotiq_gripper.connect(hostname=host, port=63352)
-        self.robotiq_gripper.activate()
+        self.robotiq_gripper.activate(auto_calibrate)
         print('robotiq gripper activated')
         if not self.robotiq_gripper.is_active():
             print('robotiq gripper is not activated!')
