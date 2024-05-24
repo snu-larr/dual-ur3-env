@@ -109,14 +109,14 @@ class UR3RealEnv(gym_custom.Env):
     def run_before_rate_sleep(self, func=lambda: {}):
         self._run_before_rate_sleep_func = func
 
-    def reset(self):
+    def reset(self, **kwargs):
         # dscho added
         self.interface.stopj(a=5, wait=True) # prevent protecive stop(invalid setpoints: sudden stop) error
         
         controller_error = lambda status: (status.safety.StoppedDueToSafety) or (not status.robot.PowerOn)
         if controller_error(self.interface.get_controller_status()):
             self._recover_from_controller_error()
-        ob = self.reset_model()
+        ob = self.reset_model(**kwargs)
         self.rate.reset()
         return ob
 
