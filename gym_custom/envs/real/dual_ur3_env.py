@@ -22,11 +22,11 @@ class DualUR3RealEnv(gym_custom.Env):
     # ur3_nact, gripper_nact = 6, 1 # per ur3/gripper action dim
     ENABLE_COLLISION_CHECKER = False
 
-    def __init__(self, host_ip_right, host_ip_left, rate):
+    def __init__(self, host_ip_right, host_ip_left, rate, auto_calibrate=True):
         self.host_ip_right = host_ip_right
         self.host_ip_left = host_ip_left
-        self.interface_right = URScriptInterface(host_ip_right, alias='right')
-        self.interface_left = URScriptInterface(host_ip_left, alias='left')
+        self.interface_right = URScriptInterface(host_ip_right, alias='right', auto_calibrate=auto_calibrate)
+        self.interface_left = URScriptInterface(host_ip_left, alias='left', auto_calibrate=auto_calibrate)
         self.rate = ROSRate(rate)
         self.dt = 1/rate
 

@@ -12,11 +12,13 @@ from gym_custom.envs.real.ur.interface import URScriptInterface, convert_action_
 from gym_custom.envs.real.utils import ROSRate, prompt_yes_or_no
 
 class UR3RealEnv(gym_custom.Env):
-    
-    def __init__(self, host_ip, rate):
+    # dscho added
+    ur3_nqpos, gripper_nqpos = 6, 1 # per ur3/gripper joint pos dim
+
+    def __init__(self, host_ip, rate, auto_calibrate=True):
         self.host_ip = host_ip
         self.rate = ROSRate(rate)
-        self.interface = URScriptInterface(host_ip)
+        self.interface = URScriptInterface(host_ip, auto_calibrate=auto_calibrate)
         
         # dscho mod
         self.init_qpos_type = 'upright'
@@ -63,7 +65,7 @@ class UR3RealEnv(gym_custom.Env):
         elif g == 'current': self._init_gripperpos = self.interface.get_gripper_position()
         else:
             assert g.shape[0] == 1
-            self._init_gripperpos = g
+            self._init_gripperpos = g[0] # dscho mod (it should be scalar, not np.ndarray)
         print('Initial gripper position is set to %s'%(g))
 
     def set_initial_gripper_vel(self, gd=None):
@@ -80,11 +82,19 @@ class UR3RealEnv(gym_custom.Env):
             getattr(self.interface, command_type)(**command_val)
         self._episode_step += 1
 
+        start = time.time()
         self.run_before_rate_sleep_return = self._run_before_rate_sleep_func() # run _run_before_rate_sleep_func
+        # print(f'run before rate sleep (maybe update network) : {time.time()-start}')
+
+        self._episode_run_before_sleep_time += (time.time()-start)
+        self._episode_run_before_sleep_time_avg = self._episode_run_before_sleep_time / self._episode_step
+
         lag_occurred = self.rate.sleep()
         self.run_before_rate_sleep() # clear _run_before_rate_sleep_func
 
         ob = self._get_obs()
+
+
         reward = 1.0
         done = False
         if lag_occurred:
@@ -99,11 +109,14 @@ class UR3RealEnv(gym_custom.Env):
     def run_before_rate_sleep(self, func=lambda: {}):
         self._run_before_rate_sleep_func = func
 
-    def reset(self):
+    def reset(self, **kwargs):
+        # dscho added
+        self.interface.stopj(a=5, wait=True) # prevent protecive stop(invalid setpoints: sudden stop) error
+        
         controller_error = lambda status: (status.safety.StoppedDueToSafety) or (not status.robot.PowerOn)
         if controller_error(self.interface.get_controller_status()):
             self._recover_from_controller_error()
-        ob = self.reset_model()
+        ob = self.reset_model(**kwargs)
         self.rate.reset()
         return ob
 
@@ -143,7 +156,8 @@ class UR3RealEnv(gym_custom.Env):
         self.interface.close()
 
     def reset_model(self):
-        self.interface.movej(q=self._init_qpos)
+        # dscho commented to make same as dual_ur3_env.py
+        # self.interface.movej(q=self._init_qpos)
 
         controller_error = lambda stats: np.any([(stat.safety.StoppedDueToSafety) or (not stat.robot.PowerOn) for stat in stats])
         movej_success = False
@@ -152,12 +166,13 @@ class UR3RealEnv(gym_custom.Env):
                 self.interface.movej(q=self._init_qpos[:6])
                 for _ in range(2):
                     obs_dict = self.get_obs_dict()
-                    movej_success = np.linalg.norm(obs_dict['right']['qpos'] - self._init_qpos[:6], np.inf) < np.deg2rad(3)
+                    movej_success = np.linalg.norm(obs_dict['qpos'] - self._init_qpos[:6], np.inf) < np.deg2rad(3)
                     if movej_success: break
                     time.sleep(0.1)
                     self.interface.movej(q=self._init_qpos[:6])
                 if not movej_success:
                     print('movej of reset_model did not register for some reason..')
+                    self.interface.stopj(a=5, wait=True) # dscho added (sometimes, it stuck in this while loop even though moved to the desired qpos)
                     # beepy.beep('error')
                     if prompt_yes_or_no("Press 'Y' to resend movej command. Press 'n' to terminate program.") is False:
                         print('exiting program!')
@@ -171,21 +186,23 @@ class UR3RealEnv(gym_custom.Env):
                 if prompt_yes_or_no("Press 'Y' after untangling robot arms. Press 'n' to terminate program.") is False:
                     print('exiting program!')
                     sys.exit()
-
+        
         self.interface.move_gripper(g=self._init_gripperpos)
         self._episode_step = 0
+        self._episode_run_before_sleep_time_avg= 0
+        self._episode_run_before_sleep_time= 0
         return self._get_obs()
 
-    def get_obs_dict(self):
+    def get_obs_dict(self, wait=False):
         return {
-            'qpos': self.interface.get_joint_positions(),
-            'qvel': self.interface.get_joint_speeds(),
+            'qpos': self.interface.get_joint_positions(wait=wait),
+            'qvel': self.interface.get_joint_speeds(wait=wait),
             'gripperpos': self.interface.get_gripper_position(),
             'grippervel': self.interface.get_gripper_speed()
         }
 
-    def _get_obs(self):
-        return self._dict_to_nparray(self.get_obs_dict())
+    def _get_obs(self, wait=False):
+        return self._dict_to_nparray(self.get_obs_dict(wait=wait))
 
     @staticmethod
     def _dict_to_nparray(obs_dict):
@@ -366,6 +383,9 @@ def servoj_speedj_example(host_ip, rate):
     real_env = UR3RealEnv(host_ip=host_ip, rate=rate)
     real_env.set_initial_joint_pos('current')
     real_env.set_initial_gripper_pos('current')
+    R, p, T = real_env.forward_kinematics_ee(real_env._init_qpos, arm='left')
+    print(f'current ee pos : {p}')
+
     if prompt_yes_or_no('current qpos is %s deg?'%(np.rad2deg(real_env._init_qpos))) is False:
         print('exiting program!')
         sys.exit()
@@ -633,6 +653,6 @@ def simple_gripper_example(host_ip, rate):
 if __name__ == "__main__":
     # sanity_check(host_ip='192.168.5.101')
     # gripper_check(host_ip='192.168.5.101')
-    # servoj_speedj_example(host_ip='192.168.5.101', rate=25)
+    servoj_speedj_example(host_ip='192.168.5.101', rate=25)
     # simple_gripper_example(host_ip='192.168.5.101', rate=25)
     pass

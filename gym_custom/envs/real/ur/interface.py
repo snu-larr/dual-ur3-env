@@ -50,7 +50,7 @@ def convert_observation_to_space(observation):
 
 class URScriptInterface(object):
     
-    def __init__(self, host_ip, alias=''):
+    def __init__(self, host_ip, alias='', auto_calibrate=True):
         
         # gripper_kwargs = {
         #     'robot': None,
@@ -64,7 +64,7 @@ class URScriptInterface(object):
         self.model = URBasic.robotModel.RobotModel()
         # self.comm = URBasic.urScriptExt.UrScriptExt(host=host_ip, robotModel=self.model, **gripper_kwargs)
         # latest dscho modified (2021 0723)
-        self.comm = URBasic.urScriptExt.UrScriptExt(host=host_ip, robotModel=self.model)
+        self.comm = URBasic.urScriptExt.UrScriptExt(host=host_ip, robotModel=self.model, auto_calibrate=auto_calibrate)
         self.alias = alias
 
         logger = URBasic.dataLogging.DataLogging()
@@ -174,6 +174,8 @@ class URScriptInterface(object):
         return self.move_gripper_position(*args, **kwargs)
 
     def move_gripper_position(self, g, wait=True):
+        if type(g) == np.ndarray:
+            g = g[0] # dscho mod (it should be scalar, not np.ndarray)
         self.comm.move_gripper_position(g, wait)
 
     def move_gripper_velocity(self, gd):

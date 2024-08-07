@@ -79,10 +79,12 @@ class SO3Constraint(NullObjectiveBase):
         elif SO3 == 'vertical_side':
             self.SO3_des = np.array([[1,0,0], [0,-1,0], [0,0,-1]]) 
             # self.SO3_des = np.array([[-1,0,0], [0,1,0], [0,0,-1]]) 
-        # elif SO3 == 'vertical_side-180':
-        #     self.SO3_des = np.array([[-1,0,0], [0,1,0], [0,0,-1]]) 
+        elif SO3 == 'vertical_side-180':
+            self.SO3_des = np.array([[-1,0,0], [0,1,0], [0,0,-1]]) 
         elif SO3 == 'vertical_front':
             self.SO3_des = np.array([[0,1,0], [1,0,0], [0,0,-1]])
+        elif SO3 == 'vertical_front-180':
+            self.SO3_des = np.array([[0,-1,0], [-1,0,0], [0,0,-1]])
         elif SO3 == 'horizontal_right_side':
             self.SO3_des = np.array([[0,0,-1], [0,-1,0], [-1,0,0]])
         elif SO3 == 'horizontal_left_side':

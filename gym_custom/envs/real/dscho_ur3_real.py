@@ -1,7 +1,7 @@
 import copy
 import numpy as np
 import os
-
+import traceback
 from numpy.core.numeric import full
 import gym_custom
 from gym_custom.spaces import Box
@@ -13,13 +13,14 @@ from gym_custom import Wrapper
 from gym_custom.envs.custom.ur_utils import SO3Constraint, UprightConstraint, NoConstraint
 # import tensorflow as tf
 import pickle
-import joblib
 import time
 import sys
 # import mujoco_py
 from gym_custom.envs.real.utils import prompt_yes_or_no
 # from gym_custom.envs.robotics import rotations #, robot_env, utils
 from gym_custom.envs.real import rotations
+import pyzed.sl as sl
+import cv2
 color2num = dict(
     gray=30,
     red=31,
@@ -105,7 +106,16 @@ class EndEffectorPositionControlSingleWrapperReal(object): #URScriptWrapper_Dual
         self.action_space = Box(low=act_low, high=act_high, dtype=np.float32)
         print(colorize('WARNING : CHECK action space boundary : {}'.format(self.action_space), 'green', bold=True))
         
-    def reset(self, **kwargs):
+    def reset(self, **kwargs):        
+        if self.env.task=='covering' and self.env._episode_step is not None:
+            # to prevent collision with object
+            for _ in range(10):
+                self.step(np.array([0.0,0,1,0])) # move to z direction
+        elif self.env.task=='image_pickandplace' and self.env._episode_step is not None:
+            # to prevent resetting while grasping the object
+            for _ in range(10):
+                self.step(np.array([0.0, 0, 1, -1.0])) # move to z direction while opening the gripper
+
         return self.env.reset(**kwargs)
         # return super().reset(**kwargs)
 
@@ -115,7 +125,7 @@ class EndEffectorPositionControlSingleWrapperReal(object): #URScriptWrapper_Dual
         # Real : 0 : fully open, 255 : fully closed
         gripper_act = gripper_act.copy()
         rescaled_act = (gripper_act+1)/(1-(-1)) # 0~1 rescale 
-        rescaled_act = self.gripper_max_close_for_pickandplace*rescaled_act*1.6 # 0~max_close_for_pickandplace rescale
+        rescaled_act = self.gripper_max_close_for_pickandplace*rescaled_act # *1.6 # 0~max_close_for_pickandplace rescale
         return rescaled_act 
         
     def step(self, action, wait = False):
@@ -135,7 +145,9 @@ class EndEffectorPositionControlSingleWrapperReal(object): #URScriptWrapper_Dual
             gripper_act = self.gripper_action_scale(gripper_act)
             # print('gripper act : ', gripper_act)
         else :
-            gripper_act = np.zeros(self.gripper_act_dim) #opened
+            # gripper_act = np.zeros(self.gripper_act_dim) # opened
+            gripper_act = np.ones(self.gripper_act_dim) # closed
+            gripper_act = self.gripper_action_scale(gripper_act)
         
         
         current_qpos = self.env.interface.get_joint_positions(wait=False)
@@ -157,7 +169,6 @@ class EndEffectorPositionControlSingleWrapperReal(object): #URScriptWrapper_Dual
         gripper_action = gripper_act
         
         q_control_args, g_control_args = self._get_control_kwargs(self.q_control_type, self.g_control_type, ur3_action, gripper_action)
-        
         
         q_control_args.update({'wait' : wait})
         
@@ -195,38 +206,44 @@ class EndEffectorPositionControlSingleWrapperReal(object): #URScriptWrapper_Dual
 
 class DSCHOUR3RealEnv(UR3RealEnv):
     def __init__(self, *args, **kwargs):
-        # self.save_init_params(locals())
-        self.init_qpos_candidates = {}
-        self.init_qpos_type = 'upright'            
-        self.ur3_nqpos = 6
-        # 양팔 널찍이 벌려있는 상태
-        # default_right_qpos = np.array([[-90.0, -90.0, -90.0, -90.0, -135.0, 180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
-        default_left_qpos = np.array([[90.0, -90.0, 90.0, -90.0, 135.0, -180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
+
+
+
+
+        # # self.save_init_params(locals())
+        # self.init_qpos_candidates = {}
+        # self.init_qpos_type = 'mounted' # 'upright'            
+        # self.ur3_nqpos = 6
+        # # 양팔 널찍이 벌려있는 상태
+        # # default_right_qpos = np.array([[-90.0, -90.0, -90.0, -90.0, -135.0, 180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
+        # default_left_qpos = np.array([[90.0, -90.0, 90.0, -90.0, 135.0, -180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
         
-        # right : [0.15, -0.35, 0.9] left : [-0.2, -0.3, 0.8]
-        # NOTE : 주의 ! qpos array rank is 2 !
-        # [0.2, -0.3, 0.8]
-        # default_right_qpos = np.array([[-0.73475149, -1.91237669, -1.78802014, -1.6064106, -2.07919236,  2.16932592]])
-        # [0.15, -0.35, 0.9]
-        # default_right_qpos = np.array([[-0.90259643, -2.24937667, -1.82423119, -1.23998854, -2.15827838,  2.2680261 ]])
-        # [0.15, -0.35, 0.8]
-        if self.init_qpos_type=='upright':
-            default_right_qpos = np.array([[-90.0, -90.0, -90.0, -90.0, 90.0, 180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
-        else:
-            default_right_qpos = np.array([[-0.76263046, -2.21085609, -1.50821658, -1.57404046, -2.08100962, 2.19369591]])
-        # default_left_qpos = np.array([[0.73490191, -1.22867589, 1.78775333, -1.53617814, 2.07956014, -2.16994491]])
+        # # right : [0.15, -0.35, 0.9] left : [-0.2, -0.3, 0.8]
+        # # NOTE : 주의 ! qpos array rank is 2 !
+        # # [0.2, -0.3, 0.8]
+        # # default_right_qpos = np.array([[-0.73475149, -1.91237669, -1.78802014, -1.6064106, -2.07919236,  2.16932592]])
+        # # [0.15, -0.35, 0.9]
+        # # default_right_qpos = np.array([[-0.90259643, -2.24937667, -1.82423119, -1.23998854, -2.15827838,  2.2680261 ]])
+        # # [0.15, -0.35, 0.8]
+        # if self.init_qpos_type=='upright':
+        #     default_right_qpos = np.array([[-90.0, -90.0, -90.0, -90.0, 90.0, 180.0]])*np.pi/180.0 #[num_candidate+1, qpos_dim]
+        # elif self.init_qpos_type=='mounted':
+        #     default_right_qpos = np.array([109.44559205, -12.49065745, 73.33899229, -138.47907012, 47.67841212,-12.53005398])
+        # else:
+        #     default_right_qpos = np.array([[-0.76263046, -2.21085609, -1.50821658, -1.57404046, -2.08100962, 2.19369591]])
+        # # default_left_qpos = np.array([[0.73490191, -1.22867589, 1.78775333, -1.53617814, 2.07956014, -2.16994491]])
         
-        # add default qpos configuration        
-        self.init_qpos_candidates['q_right_des'] =default_right_qpos
-        self.init_qpos_candidates['q_left_des'] = default_left_qpos
+        # # add default qpos configuration        
+        # self.init_qpos_candidates['q_right_des'] =default_right_qpos
+        # self.init_qpos_candidates['q_left_des'] = default_left_qpos
         
-        # for push or reach (closed gripper)
-        if self.task in ['push', 'reach']:
-            default_gripper_right_qpos = np.array([[0.70005217, 0.01419325, 0.0405478, 0.0134475, 0.74225534, 0.70005207, 0.01402114, 0.04054553, 0.01344841, 0.74224361]])
-            default_gripper_left_qpos = np.array([[0.70005217, 0.01419325, 0.0405478, 0.0134475, 0.74225534, 0.70005207, 0.01402114, 0.04054553, 0.01344841, 0.74224361]])
-            # add default qpos configuration        
-            self.init_qpos_candidates['gripper_q_right_des'] =default_gripper_right_qpos
-            self.init_qpos_candidates['gripper_q_left_des'] =default_gripper_left_qpos
+        # # for push or reach (closed gripper)
+        # if self.task in ['push', 'reach']:
+        #     default_gripper_right_qpos = np.array([[0.70005217, 0.01419325, 0.0405478, 0.0134475, 0.74225534, 0.70005207, 0.01402114, 0.04054553, 0.01344841, 0.74224361]])
+        #     default_gripper_left_qpos = np.array([[0.70005217, 0.01419325, 0.0405478, 0.0134475, 0.74225534, 0.70005207, 0.01402114, 0.04054553, 0.01344841, 0.74224361]])
+        #     # add default qpos configuration        
+        #     self.init_qpos_candidates['gripper_q_right_des'] =default_gripper_right_qpos
+        #     self.init_qpos_candidates['gripper_q_left_des'] =default_gripper_left_qpos
 
         self.gripper_min_position = 0
         self.gripper_max_position = 255 # just for _get_obs in _define_class_variables
@@ -239,7 +256,7 @@ class DSCHOUR3RealEnv(UR3RealEnv):
     def _define_class_variables(self):
         '''overridable method'''
         # Initial position/velocity
-        self._init_qpos = self.init_qpos_candidates['q_'+self.which_hand+'_des']
+        self._init_qpos = np.zeros([6])
         self._init_qvel = np.zeros([6])
         self._init_gripperpos = np.zeros([1])
         self._init_grippervel = np.zeros([1])
@@ -259,6 +276,7 @@ class DSCHOUR3RealEnv(UR3RealEnv):
         self.kinematics_params['lb'] = np.array([-2*np.pi for _ in range(6)])
         
         if self.init_qpos_type=='upright':
+            print('############################## init qpos type is upright. upright_ur3_kinematics_params is loaded.')
             path_to_pkl = os.path.join(os.path.dirname(__file__), 'ur/upright_ur3_kinematics_params.pkl')
         else: # dual arm posture params       
             path_to_pkl = os.path.join(os.path.dirname(__file__), 'ur/dual_ur3_kinematics_params.pkl')
@@ -266,12 +284,15 @@ class DSCHOUR3RealEnv(UR3RealEnv):
         if os.path.isfile(path_to_pkl):
             kinematics_params_from_pkl = pickle.load(open(path_to_pkl, 'rb'))
             self.kinematics_params['T_wb_right'] = kinematics_params_from_pkl['T_wb_right']
-            self.kinematics_params['T_wb_left'] = kinematics_params_from_pkl['T_wb_left']
+            if self.init_qpos_type=='upright':
+                self.kinematics_params['T_wb_left'] = kinematics_params_from_pkl['T_wb_right'] # dscho NOTE: since pkl file is obtained where right arm is properly set, and left arm is far away yyo use right arm only
+            else:
+                self.kinematics_params['T_wb_left'] = kinematics_params_from_pkl['T_wb_left']
         else:
             raise FileNotFoundError('No such file: %s. Run MuJoCo-based simulated environment to generate file.'%(path_to_pkl))
         
         # Define spaces
-        self._set_action_space()
+        self.action_space = self._set_action_space()
         obs = self._get_obs()
         self.observation_space = self._set_observation_space(obs)
 
@@ -295,11 +316,48 @@ class DSCHOUR3RealEnv(UR3RealEnv):
         gripper_state = np.array([gripper_state, gripper_state])
         return gripper_state
 
-    # def step(self, action):
-    #     action = action.copy()
-    #     raise NotImplementedError('Currently, Not implemented for dual arm. We just overrided it in sigle arm env')
+    # dscho added for real-world ARL experiments
+    def get_joint_positions(self, wait=False):        
+        return self.interface.get_joint_positions(wait=wait)
+    
+    def call_stopj(self):
+        self.interface.stopj(a=2.5, wait=True) # prevent protecive stop(invalid setpoints: sudden stop) error
         
+    def movej_to_qpos(self, desired_qpos):
+        # dscho commented to make same as dual_ur3_env.py
+        # self.interface.movej(q=self._init_qpos)
+
+        self.interface.stopj(a=5, wait=True) # prevent protecive stop(invalid setpoints: sudden stop) error
+
+        controller_error = lambda stats: np.any([(stat.safety.StoppedDueToSafety) or (not stat.robot.PowerOn) for stat in stats])
+        movej_success = False
+        while not movej_success:
+            try:
+                self.interface.movej(q=desired_qpos)
+                for _ in range(2):
+                    obs_dict = self.get_obs_dict()
+                    movej_success = np.linalg.norm(obs_dict['qpos'] - desired_qpos, np.inf) < np.deg2rad(3)
+                    if movej_success: break
+                    time.sleep(0.1)
+                    self.interface.movej(q=desired_qpos)
+                if not movej_success:
+                    print('movej of reset_model did not register for some reason..')
+                    # beepy.beep('error')
+                    if prompt_yes_or_no("Press 'Y' to resend movej command. Press 'n' to terminate program.") is False:
+                        print('exiting program!')
+                        sys.exit()
+            except Exception as e:
+                print('hardware error during movej of reset_model')
+                traceback.print_exc()
+                if controller_error([self.interface.get_controller_status()]):
+                    self._recover_from_controller_error()
+                # beepy.beep('error')
+                if prompt_yes_or_no("Press 'Y' after untangling robot arms. Press 'n' to terminate program.") is False:
+                    print('exiting program!')
+                    sys.exit()
         
+        self.interface.move_gripper(g=self._init_gripperpos)
+        # return self._get_obs() # dscho commented (to prevent too frequent calls of get_joint_positions)
 
     def get_endeff_pos(self, arm, q = None, wait=False):
         if q is None:
@@ -347,6 +405,8 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                 predefined_goal = None,
                 optitrack_subscriber = None,
                 custom_processed_vel = False,
+                # dscho added for ARL
+                reset_at_goal = False,
                 *args,
                 **kwargs
                 ):
@@ -380,8 +440,41 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
             # assert optitrack_subscriber is not None
             self.optitrack_subscriber = optitrack_subscriber
             
-            
+        self.table_z_offset = 0.755
+        # dscho added for ARL
+        self.reset_at_goal = reset_at_goal
         
+        # old ver (mounted)
+        # peg_insert_bias = np.array([0, -0.03, 0])
+        # upright
+        peg_insert_bias = np.array([-0.01, 0., 0])
+        self.predefined_goal_dict = {
+                                    # old ver (tall table)
+                                    #  'peg_forward' : np.array([0.15232019, -0.50705489, 0.88629302]) + peg_insert_bias,
+                                    #  'peg_backward' : np.array([0.15385023, -0.25421638, 0.80274345]),
+                                    #  'sweep_forward' : np.array([[0.15, -0.35, self.table_z_offset+0.05],
+                                    #                             [-0.05, -0.35, self.table_z_offset+0.05]]),
+                                    #  'sweep_backward' : np.array([0.05, -0.35, self.table_z_offset+0.05]),
+                                    # old ver2 (mounted)
+                                    #  'peg_forward' : np.array([0.22, -0.4, 0.76]) + peg_insert_bias,
+                                    #  'peg_backward' : np.array([0.22, -0.25421638, 0.80274345]),
+                                     # upright
+                                     'peg_forward' : np.array([-0.34, -0.345, 0.866]) + peg_insert_bias,
+                                     'peg_backward' : np.array([-0.15, -0.36, 0.9]),
+                                     'sweep_forward' : np.array([[0.08, -0.385, 0.8],
+                                                                [-0.15, -0.385, 0.8]]),
+                                     'sweep_backward' : np.array([-0.039, -0.385, 0.8]),                                     
+                                     'covering_forward' : np.array([0.178, -0.368, 0.78]),
+                                     'covering_backward' : np.array([-0.1, -0.34,  0.9]),
+                                     # left top : [-0.04018892 -0.25101522  0.79990623] left bottom : [-0.04441312 -0.40260624  0.80429047]
+                                     # right top : [ 0.17620757 -0.24521262  0.79909224] right bottom : [ 0.18331614 -0.40192872  0.7892433 ]
+                                     'image_pickandplace_forward' : np.array([0.067, -0.324, 0.78]),
+                                     'image_pickandplace_backward' : np.array([[-0.04018892, -0.25101522,  0.79990623],
+                                                                               [-0.04441312, -0.40260624,  0.80429047],
+                                                                               [ 0.17620757, -0.24521262,  0.79909224],
+                                                                               [ 0.18331614, -0.40192872,  0.7892433 ]]),
+                                     
+                                     }
 
         self.previous_ee_pos = None
         self.previous_obj_pos = None
@@ -395,6 +488,75 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                         **kwargs
                         )
         
+        self._state_goal = self.sample_goal(self.full_state_goal)
+
+        if self.task == 'peg':
+            if self.reset_at_goal:
+                print('@@@@@@@ You should define initial joint pos correspond to peg goal or define peg_goal correspond to current init qpos!')
+                # old ver (tall table)
+                # self.set_initial_joint_pos(np.array([92.9005243, -18.10654826, 42.78848504, -110.46895611, 43.94059452, 79.73609282])*np.pi/180.0)
+                # old ver2 (mounted)
+                # self.set_initial_joint_pos(np.array([1.731179, -0.87071163, 1.14605093, -1.68206484, 0.79754043, 1.33863306]))
+                # upright
+                self.set_initial_joint_pos(np.array([0.54606271, -0.68923074, 0.39925241, -1.28086836, -1.56263048, -1.01299936]))
+                
+            else:
+                # old ver2 (mounted)
+                # self.set_initial_joint_pos(np.array([107.16792204, -71.10452686, 120.7596843, -121.44078075, 46.43955241, 60.04848235])*np.pi/180.0)
+                # upright (x=0)
+                # self.set_initial_joint_pos(np.array([1.17900097, -1.34164936, 1.24671173, -1.4816764, -1.5633033, -0.3801921 ]))
+                # upright (x=-0.148)
+                self.set_initial_joint_pos(np.array([0.90049171, -1.21185524, 1.07228374, -1.43334037, -1.56223375, -0.65869314]))
+                
+
+            self.set_initial_gripper_pos(np.array([255]))
+            
+        
+        elif self.task == 'sweep':
+            if self.reset_at_goal:
+                # self.set_initial_joint_pos(np.array([98.68409626, -42.59550851, 91.25542542, -132.12103827, 45.30285526, 70.99222322])*np.pi/180.0)
+                # upright
+                # self.initial_joint_positions = np.array([[1.61340702, -1.12512523,  0.78730154, -1.19159109, -1.60718424, -1.50166256],
+                #                                         [0.89749712, -1.01802522, 0.73561239, -1.27307445, -1.64055711, -2.22776157]]
+                #                                         )
+                
+                self.set_initial_joint_pos(np.array([1.15561521, -1.29849226,  0.98778868, -1.28730709, -1.55795795, -1.98243553]))
+            else: # vertical front
+                # self.set_initial_joint_pos(np.array([98.68409626, -42.59550851, 91.25542542, -132.12103827, 45.30285526, 70.99222322])*np.pi/180.0)
+                # upright: init ee pos :[-0.04273568 -0.38191446  0.87700127]
+                self.set_initial_joint_pos(np.array([1.15573514, -1.26402408,  1.27845192, -1.5584448 , -1.55817396, -1.98209984]))
+
+            self.set_initial_gripper_pos(np.array([255]))
+        elif self.task == 'covering':
+            if self.reset_at_goal:
+                # upright
+                # init ee pos : [ 0.17827251 -0.36799464  0.7791238 ]
+                self.set_initial_joint_pos(np.array([1.71711588, -1.0820306,  1.48655272, -1.94703085, -1.51943809, -1.47388536]))
+            else:
+                # upright
+                # init ee pos : [-0.13195436 -0.34062076  0.98709191]
+                self.set_initial_joint_pos(np.array([0.89681441, -1.2870949, 0.79797077, -1.11509735, -1.58500892, -2.22543604]))
+
+            self.set_initial_gripper_pos(np.array([255]))
+
+        elif self.task == 'arl_push':
+            raise NotImplementedError
+        elif self.task == 'image_pickandplace':
+            if self.reset_at_goal:
+                # upright
+                # init ee pos : [ 0.06188416 -0.34819109  0.83701621]
+                self.set_initial_joint_pos(np.array([1.43031359, -1.3706773, 1.60599089 ,-1.78116781, -1.58229429 ,-1.73337967]))
+            else:
+                # upright
+                # init ee pos : [ 0.06188416 -0.34819109  0.83701621]
+                self.set_initial_joint_pos(np.array([1.43031359, -1.3706773, 1.60599089 ,-1.78116781, -1.58229429 ,-1.73337967]))
+            self.set_initial_gripper_pos(np.array([0]))
+        else:
+            self.set_initial_joint_pos(np.array([98.68409626, -42.59550851, 91.25542542, -132.12103827, 45.30285526, -10.99222322])*np.pi/180.0)
+            self.set_initial_gripper_pos(np.array([0]))
+
+
+
         if self.which_hand =='right': 
             ee_low = np.array([-0.1, -0.5, 0.77])
             ee_high = np.array([0.35, -0.2, 0.95])
@@ -411,15 +573,15 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
         
         # Currently, Set the goal obj space same sa ee pos sapce
         if self.which_hand =='right': 
-            goal_obj_low = np.array([0.0, -0.45, 0.77])
+            goal_obj_low = np.array([0.0, -0.45, self.table_z_offset])
             goal_obj_high = np.array([0.3, -0.3, 0.95])
         
         elif self.which_hand =='left':
-            goal_obj_low = np.array([-0.3, -0.45, 0.77])
+            goal_obj_low = np.array([-0.3, -0.45, self.table_z_offset])
             goal_obj_high = np.array([0.0, -0.3, 0.95])
         
         if self.init_qpos_type == 'upright': # right 기준
-            goal_obj_low = np.array([-0.15, -0.45, 0.77])
+            goal_obj_low = np.array([-0.15, -0.45, self.table_z_offset])
             goal_obj_high = np.array([0.15, -0.3, 0.95])
 
         self.goal_obj_pos_space = Box(low = goal_obj_low, high = goal_obj_high, dtype=np.float32)
@@ -430,8 +592,8 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
         goal_obj_floor_high = np.concatenate([goal_obj_high[:-1], floor_z_height], axis =-1)
         self.goal_obj_floor_space = Box(low = goal_obj_floor_low, high = goal_obj_floor_high, dtype=np.float32)
 
-
-        self._state_goal = self.sample_goal(self.full_state_goal)
+        # NOTE: should sample goal here if you want to sample it based on the goal_obj_ee_space, etc
+        # self._state_goal = self.sample_goal(self.full_state_goal)
         
 
         # observation, reward, done, _info = self.step(self.action_space.sample()) # goalenv는 return obs_dict
@@ -455,14 +617,37 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
 
         if full_state_goal:
             raise NotImplementedError
+        # dscho added for ARL
+        elif self.reset_at_goal:
+            if self.task in ['peg']:
+                goal = self.predefined_goal_dict['peg_backward']
+            elif self.task in ['sweep']:
+                goal = self.predefined_goal_dict['sweep_backward']
+            elif self.task in ['covering']:
+                goal = self.predefined_goal_dict['covering_backward']
+            elif self.task in ['image_pickandplace']:
+                goals = self.predefined_goal_dict['image_pickandplace_backward']
+                goal = goals[np.random.randint(goals.shape[0])]
+                
         else :
-            if not self.has_object: # reach
-                goal_ee_pos = np.random.uniform(
-                    self.goal_ee_pos_space.low,
-                    self.goal_ee_pos_space.high,
-                    size=(self.goal_ee_pos_space.low.size),
-                )
-                goal = goal_ee_pos
+            if not self.has_object: # reach or tasks with always closed gripper
+                # dscho added for ARL   
+                if self.task in ['peg']:
+                    goal = self.predefined_goal_dict['peg_forward']
+                elif self.task in ['sweep']:
+                    goals = self.predefined_goal_dict['sweep_forward']
+                    goal = goals[np.random.randint(goals.shape[0])]
+                elif self.task in ['covering']:
+                    goal = self.predefined_goal_dict['covering_forward']
+                elif self.task in ['image_pickandplace']:
+                    goal = self.predefined_goal_dict['image_pickandplace_forward']
+                else:
+                    goal_ee_pos = np.random.uniform(
+                        self.goal_ee_pos_space.low,
+                        self.goal_ee_pos_space.high,
+                        size=(self.goal_ee_pos_space.low.size),
+                    )
+                    goal = goal_ee_pos
             else: # pick and place, push, ...
                 
                 goal_obj_pos = np.random.uniform(
@@ -487,34 +672,49 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                         size=(self.goal_ee_pos_space.low.size),
                     )
                     goal = goal_ee_pos
+                # dscho added for ARL
+                elif self.task in ['peg']:
+                    goal = self.predefined_goal_dict['peg_forward']
                 else:
                     raise NotImplementedError
 
         return goal
     
-    # def reset(self):
-    #     self.sim.reset()
-    #     ob = self.reset_model()
-    #     return ob
 
-    def reset_model(self):
-        if prompt_yes_or_no('Resetting... Did you prepare the object setting?') is False:
+    def reset_model(self, init=None, goal=None):
+        if prompt_yes_or_no('Resetting... Init qpos is %s deg. Did you prepare the GRASPING and OBJECT SETTING?'%(np.rad2deg(self._init_qpos))) is False:
             print('exiting program!')
             sys.exit()
-        self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
-        self._episode_step = 0
-        # if self.has_object: # reach인 경우엔 필요x            
-        #     if self.task in ['reach']:
-        #         raise NotImplementedError
-        #         # if debug_opt==1:
-        #         #     pass
-        #         # elif debug_opt==2:
-        #         #     self._state_goal = object_pos.copy()
-        #     else:
-        #         while np.linalg.norm(object_pos - self._state_goal) < 0.05:
-        #             self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
-            
         
+        
+        if self.task=='sweep':
+            if self.reset_at_goal:
+                # backward goal is only one, so does not need to care it
+                self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
+                if init is not None:
+                    if (init == self.predefined_goal_dict['sweep_forward'][0]).all():
+                        self.set_initial_joint_pos(np.array([1.54041445, -1.18352491,  1.18829679, -1.5288499, -1.56138164, -1.55215103]))
+                    elif (init == self.predefined_goal_dict['sweep_forward'][1]).all():
+                        self.set_initial_joint_pos(np.array([0.89652717, -1.10477668,  1.16944218, -1.61763555, -1.65443308, -2.21739132]))
+            else:
+                if goal is not None:
+                    self._state_goal = goal.copy()
+                    
+                else:
+                    self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)
+
+        elif self.task == 'image_pickandplace':
+            if self.reset_at_goal:
+                if init is not None:
+                    self._state_goal = init.copy()
+
+
+
+        else:
+            self._state_goal = self.sample_goal(full_state_goal = self.full_state_goal)        
+        
+
+
 
         self.previous_ee_pos = None
         self.previous_obj_pos = None
@@ -547,7 +747,7 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
             dt = 0.05
             
             
-        print('In get_obs, dt : ', dt)
+        # print('In get_obs, dt : ', dt)
 
 
         if self.has_object:
@@ -652,46 +852,19 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
         return observation, reward, done, info
 
 
-    def _calculate_so3_error(self):
-        if self.which_hand =='right':
-            ur3_qpos = self._get_ur3_qpos()[:self.ur3_nqpos]    
-        elif self.which_hand =='left':
-            ur3_qpos = self._get_ur3_qpos()[self.ur3_nqpos:]
+    # def _calculate_so3_error(self):
+    #     if self.which_hand =='right':
+    #         ur3_qpos = self._get_ur3_qpos()[:self.ur3_nqpos]    
+    #     elif self.which_hand =='left':
+    #         ur3_qpos = self._get_ur3_qpos()[self.ur3_nqpos:]
 
-        SO3, x, _ = self.forward_kinematics_ee(ur3_qpos, arm=self.which_hand)
-        null_obj_val = self.so3_constraint.evaluate(SO3)
+    #     SO3, x, _ = self.forward_kinematics_ee(ur3_qpos, arm=self.which_hand)
+    #     null_obj_val = self.so3_constraint.evaluate(SO3)
 
-        return null_obj_val
+    #     return null_obj_val
     
     def get_info(self):
         return copy.deepcopy(self.info)
-
-    # def convert_goal_for_reward(self, goal): #needed for TDMWrapper
-    #     if goal.ndim==1:
-    #         if not self.full_state_goal:
-    #             return goal
-    #         elif self.reward_by_ee:
-    #             return goal[-3:]
-    #         else: #exclude qvel in reward computation in outer wrapper
-    #             return np.concatenate([goal[:self.obs_nqpos], goal[-3:]], axis =-1)
-    #     elif goal.ndim==2:
-    #         if not self.full_state_goal:
-    #             return goal
-    #         elif self.reward_by_ee:
-    #             return goal[:, -3:]
-    #         else: #exclude qvel in reward computation in outer wrapper
-    #             return np.concatenate([goal[:, :self.obs_nqpos], goal[:, -3:]], axis =-1)
-    #     else :
-    #         raise NotImplementedError
-
-    # def convert_goal_for_reward_tf(self, goals): #needed for TDMWrapper
-    #     #Caution : Assume batch data is given.
-    #     if not self.full_state_goal:
-    #         return goals
-    #     elif self.reward_by_ee:
-    #         return goals[:, -3:]
-    #     else: #exclude qvel in reward computation in outer wrapper
-    #         return tf.concat([goals[:, :self.obs_nqpos], goals[:, -3:]], axis =-1)
 
     def _is_success(self, achieved_goal, desired_goal):
         if self.reward_success_criterion=='full_state':
@@ -704,26 +877,61 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
 
     # Has no meaning in TDM, LEAP
     def compute_reward(self, achieved_goal, desired_goal, info):
-        if self.reward_success_criterion=='full_state':
-            placingDist = np.linalg.norm(achieved_goal - desired_goal)
-        elif self.reward_success_criterion=='ee_pos':
+        # dscho added for ARL
+        if self.task in ['peg']:
             placingDist = np.linalg.norm(achieved_goal[-3:] - desired_goal[-3:])
-        
-        if self.sparse_reward : 
-            if placingDist < self.distance_threshold:
-                reward = 0.0
-            else :
-                reward = -1.0
-        else :
-            if self.task in ['push']:
-                # print('currently, dense push debug')
-                ee_pos = info['right_ee_pos']
-                from_ee_to_obj = np.linalg.norm(achieved_goal[-3:] - ee_pos[-3:])
-                reward = -from_ee_to_obj -placingDist
-            else:
+            if self.sparse_reward:
+                # old ver (mounted)
+                # obj_tip_ypos = achieved_goal[1] - 0.1 # bias for virtual obj_tip_site
+                # upright
+                obj_tip_xpos = achieved_goal[0] - 0.05 # bias for virtual obj_tip_site
+                if self.reset_at_goal:
+                    if placingDist < self.distance_threshold:
+                        reward = 1.0
+                    else :
+                        reward = 0.0    
+                else:
+                    # old ver (mounted)
+                    # if obj_tip_ypos < self._state_goal[1] and placingDist < self.distance_threshold:
+                    # upright
+                    if obj_tip_xpos < self._state_goal[0] and placingDist < self.distance_threshold:
+                        reward = 1.0
+                    else :
+                        reward = 0.0    
+            else:    
                 reward = -placingDist
+            return reward
+        elif self.task in ['sweep', 'covering', 'image_pickandplace']:
+            placingDist = np.linalg.norm(achieved_goal[-3:] - desired_goal[-3:])
+            if self.sparse_reward:
+                if placingDist < self.distance_threshold:
+                    reward = 1.0
+                else :
+                    reward = 0.0    
+            else:    
+                reward = -placingDist
+            return reward
+        else:
+            if self.reward_success_criterion=='full_state':
+                placingDist = np.linalg.norm(achieved_goal - desired_goal)
+            elif self.reward_success_criterion=='ee_pos':
+                placingDist = np.linalg.norm(achieved_goal[-3:] - desired_goal[-3:])
+            
+            if self.sparse_reward : 
+                if placingDist < self.distance_threshold:
+                    reward = 0.0
+                else :
+                    reward = -1.0
+            else :
+                if self.task in ['push']:
+                    # print('currently, dense push debug')
+                    ee_pos = info['right_ee_pos']
+                    from_ee_to_obj = np.linalg.norm(achieved_goal[-3:] - ee_pos[-3:])
+                    reward = -from_ee_to_obj -placingDist
+                else:
+                    reward = -placingDist
 
-        return reward
+            return reward
 
     
     # obj related
@@ -930,7 +1138,7 @@ class DSCHOSingleUR3PickAndPlaceMultiObjectRealEnv(DSCHOSingleUR3GoalRealEnv):
                 dt = 0.05
                 
                 
-            print('In get_obs, dt : ', dt)
+            # print('In get_obs, dt : ', dt)
             # for i in range(self.num_objects):
             #     obj_pos = self.get_multiple_obj_pos(self.optitrack_subscriber.optitrack_id_list)
 
@@ -1100,14 +1308,53 @@ class DSCHOSingleUR3DrawerOpenRealEnv(DSCHOSingleUR3GoalRealEnv):
         super().__init__(has_object=True, block_gripper=False, task='drawer_open', *args, **kwargs)
 
 
+# dscho added for ARL
+class DSCHOSingleUR3PegRealEnv(DSCHOSingleUR3GoalRealEnv):
+    def __init__(self, *args, **kwargs):        
+        assert kwargs.get('so3_constraint')=='vertical_side-180'
+        super().__init__(has_object=False, block_gripper=True, task='peg', *args, **kwargs)
+
+class DSCHOSingleUR3SweepRealEnv(DSCHOSingleUR3GoalRealEnv):
+    def __init__(self, *args, **kwargs):
+        assert kwargs.get('so3_constraint')=='vertical_front-180'
+        super().__init__(has_object=False, block_gripper=True, task='sweep', *args, **kwargs)
+
+class DSCHOSingleUR3CoveringRealEnv(DSCHOSingleUR3GoalRealEnv):
+    def __init__(self, *args, **kwargs):
+        assert kwargs.get('so3_constraint')=='vertical_front-180'
+        super().__init__(has_object=False, block_gripper=True, task='covering', *args, **kwargs)
+
+
+class DSCHOSingleUR3ImagePickAndPlaceRealEnv(DSCHOSingleUR3GoalRealEnv):
+    def __init__(self, *args, **kwargs):
+        assert kwargs.get('so3_constraint')=='vertical_front-180'
+        # since 
+        super().__init__(has_object=False, block_gripper=False, task='image_pickandplace', *args, **kwargs)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 def get_default_env_kwargs():
     # host_ip_right = '192.168.5.102'
-    # host_ip_left = '192.168.5.101'
-    host_ip_right = '192.168.2.4' # assume optitrack wifi
+    host_ip_left = '192.168.5.101'
+    # host_ip_right = '192.168.2.4' # assume optitrack wifi
     env_kwargs = dict(
-        host_ip=host_ip_right, # But which hand should be right in current simulation xml setting! (In sim, only right arm is used as upright)
-        rate=15, # 너무 느리면 20Hz정도까지 늘려보기                  
+        host_ip=host_ip_left, # But which hand should be right in current simulation xml setting! (In sim, only right arm is used as upright)
+        rate=10, # 너무 느리면 20Hz정도까지 늘려보기                  
         #################### env kwargs
         sparse_reward = True,               
         trigonometry_observation = False,         
@@ -1116,8 +1363,8 @@ def get_default_env_kwargs():
         reward_success_criterion='ee_pos',
         distance_threshold = 0.05,
         # initMode='vertical',
-        which_hand='right', 
-        so3_constraint ='vertical_side',
+        which_hand='left', # 'right', 
+        so3_constraint ='vertical_side-180',
         # task = 'pickandplace',
         observation_type='ee_object_pos_w_grip_custom_vel', #'joint_q', #'ee_object_object', #'ee_object_all'
         init_qpos_type = 'upright',
@@ -1135,7 +1382,7 @@ def get_default_wrapper_kwargs(env):
                 speedj_args = {'a': 5, 't': 2/env.rate._freq, 'wait': False},
                 servoj_args = {'t': 2/env.rate._freq, 'wait': False},
                 g_control_args = {'wait' : False},
-                so3_constraint='vertical_side', 
+                so3_constraint='vertical_side-180', 
                 )
 
 def test_single_ur3_real():
@@ -1349,8 +1596,295 @@ def test_single_ur3_real_pickandplace():
 
 
 
+def test_single_ur3_real_peg():
+
+    env_kwargs = get_default_env_kwargs()
+    rate = 20
+    env_kwargs.update(dict(rate = rate,
+                           so3_constraint='vertical_side-180',
+                           auto_calibrate=False,
+                           ))
+    
+    env = DSCHOSingleUR3PegRealEnv(**env_kwargs)
+        
+    wrapper_kwargs = get_default_wrapper_kwargs(env)     
+    wrapper_kwargs.update(dict(so3_constraint='vertical_side-180'))
+    wrapper_kwargs.update({'action_downscale' : 0.005, 'speedj_args' : {'a': 5, 't': 2/env.rate._freq, 'wait': False}, 
+                                'multi_step' : 1, 'q_control_type' : 'speedj',
+                                'gripper_action' : False,
+                                })    
+    env = EndEffectorPositionControlSingleWrapperReal(**wrapper_kwargs)
+    
+    
+    print('done')
+
+    obs = env.reset()
+    print('reset, obs : {}'.format(obs))
+    
+
+    if prompt_yes_or_no('Run goal reaching behavior?') is False:
+        print('exiting program!')
+        sys.exit()
+
+    pure_obs = obs['observation']
+    achieved_goal = obs['achieved_goal']
+    
+    # desired_goal = obs['desired_goal']
+    desired_goal = achieved_goal + np.array([0,0,0.05])
+    # desired_goal = np.array([-0.1, -0.3, 0.78])
+    ee_pos = pure_obs[:3]
+    use_sleep = False
+    duration = 4.0  #4초씩 움직임
+    dt = env.dt
+    act_scale = 10
+    for i in range(2):
+        for t in range(int(duration/dt)):
+            
+            action_xyz = np.tanh(act_scale*(desired_goal - ee_pos))
+            # (20240507) NOTE: only -1~-0.8, 0.8~1.0 works. Intermediate values are meaningless (do not know reason..)
+            if i ==0:
+                action = np.concatenate([action_xyz, np.array([1.0])], axis =-1)
+            elif i==1:
+                action = np.concatenate([action_xyz, np.array([-1.0])], axis =-1)
+            
+            if ee_pos[2] < 0.75:
+                action[2] = np.clip(action[2], 0, 1) # to prevent collision with table
+
+            next_obs, reward, done, info = env.step(action)
+            obs = next_obs
+            pure_obs = obs['observation']
+            ee_pos = pure_obs[:3]
+            # obj_pos = pure_obs[3:6]
+            print('step : {} act : {} ee pos ; {}  goal : {}'.format(t, action, ee_pos, desired_goal))
+        
+        if use_sleep:
+            time.sleep(1)
+    
+
+    time.sleep(1)
+    
+    print('done')
+
+
+def test_single_ur3_real_sweep():
+
+    env_kwargs = get_default_env_kwargs()
+    rate = 10
+    env_kwargs.update(dict(rate = rate,
+                           so3_constraint='vertical_front',
+                           auto_calibrate=False,
+                           ))
+    env = DSCHOSingleUR3SweepRealEnv(**env_kwargs)
+        
+    wrapper_kwargs = get_default_wrapper_kwargs(env)     
+    wrapper_kwargs.update(dict(so3_constraint='vertical_front'))
+    wrapper_kwargs.update({'action_downscale' : 0.005, 'speedj_args' : {'a': 5, 't': 2/env.rate._freq, 'wait': False}, 
+                                'multi_step' : 1, 'q_control_type' : 'speedj',
+                                'gripper_action' : False,
+                                })    
+    env = EndEffectorPositionControlSingleWrapperReal(**wrapper_kwargs)
+    
+    
+    print('done')
+
+    obs = env.reset()
+    print('reset, obs : {}'.format(obs))
+    
+
+    if prompt_yes_or_no('Run goal reaching behavior?') is False:
+        print('exiting program!')
+        sys.exit()
+
+    pure_obs = obs['observation']
+    achieved_goal = obs['achieved_goal']
+    
+    desired_goal = obs['desired_goal']
+    # desired_goal = achieved_goal + np.array([0,0,0.05])
+    # desired_goal = np.array([-0.1, -0.3, 0.78])
+    ee_pos = pure_obs[:3]
+    use_sleep = False
+    duration = 4.0  #4초씩 움직임
+    dt = env.dt
+    act_scale = 10
+    for i in range(2):
+        for t in range(int(duration/dt)):
+            
+            action_xyz = np.tanh(act_scale*(desired_goal - ee_pos))
+            # (20240507) NOTE: only -1~-0.8, 0.8~1.0 works. Intermediate values are meaningless (do not know reason..)
+            if i ==0:
+                action = np.concatenate([action_xyz, np.array([1.0])], axis =-1)
+            elif i==1:
+                action = np.concatenate([action_xyz, np.array([-1.0])], axis =-1)
+            
+            if ee_pos[2] < 0.77:
+                action[2] = np.clip(action[2], 0, 1) # to prevent collision with table
+
+            next_obs, reward, done, info = env.step(action)
+            obs = next_obs
+            pure_obs = obs['observation']
+            ee_pos = pure_obs[:3]
+            # obj_pos = pure_obs[3:6]
+            print('step : {} act : {} ee pos ; {}  goal : {}'.format(t, action, ee_pos, desired_goal))
+        
+        if use_sleep:
+            time.sleep(1)
+    
+
+    time.sleep(1)
+    
+    print('done')
+
+def zed_render(zed, runtime_parameters, image, height, width):
+    if zed.grab(runtime_parameters) == sl.ERROR_CODE.SUCCESS:
+        # A new image is available if grab() returns SUCCESS
+        zed.retrieve_image(image, sl.VIEW.LEFT)
+                
+        raw_data = image.get_data()
+        # Only for PickAndPlace
+        raw_data = raw_data[100:, 250:550]
+    
+        cv2.imshow("ZED", raw_data)
+        cv2.waitKey(1)
+        
+        img = cv2.cvtColor(raw_data, cv2.COLOR_BGRA2RGB)
+        img = cv2.resize(img, (height, width))
+        assert img.shape==(height, width, 3)    
+        return img
+    else:
+        raise NotImplementedError
+
+
+
+def test_single_ur3_real_se3_calibration():
+    # task='peg'
+    # task='sweep'
+    # task='covering'
+    task='image_pickandplace'
+
+    if task=='peg':
+        so3_constraint ='vertical_side-180'
+    elif task in ['sweep','covering', 'image_pickandplace']:
+        so3_constraint ='vertical_front-180'
+    env_kwargs = get_default_env_kwargs()
+    rate = 10
+
+    env_kwargs.update(dict(rate = rate,
+                           so3_constraint =so3_constraint,
+                           reset_at_goal = False,
+                           auto_calibrate = True, # False,
+                           ))
+    if task=='peg':
+        env = DSCHOSingleUR3PegRealEnv(**env_kwargs)
+    elif task=='sweep':
+        env = DSCHOSingleUR3SweepRealEnv(**env_kwargs)
+    elif task=='covering':
+        env = DSCHOSingleUR3CoveringRealEnv(**env_kwargs)
+    elif task=='image_pickandplace':
+        env = DSCHOSingleUR3ImagePickAndPlaceRealEnv(**env_kwargs)
+        
+    wrapper_kwargs = get_default_wrapper_kwargs(env)         
+    wrapper_kwargs.update({'action_downscale' : 0.01, 'speedj_args' : {'a': 5, 't': 2/env.rate._freq, 'wait': False}, 
+                                'multi_step' : 1, 'q_control_type' : 'speedj',
+                                'so3_constraint' : so3_constraint,
+                                })    
+    env = EndEffectorPositionControlSingleWrapperReal(**wrapper_kwargs)
+    print(env.get_obs_dict()['qpos'])    
+    obs = env.reset()
+    print('done')
+    
+    for i in range(100):
+        env.step(np.array([0,0,0,0]))
+
+    # obs = env.reset()
+    # print('reset, obs : {}'.format(obs))
+    
+
+    while True:
+    # for i in range(3):
+        q = env.get_obs_dict()['qpos']
+        R, p, T = env.forward_kinematics_ee(q=q, arm='left')
+        # print(R)
+        print(f'{p} {q}')
+        time.sleep(0.1)
+    
+    
+    
+def zed_camera_streaming():
+    
+    height = width = 84
+    zed = sl.Camera()
+
+    # Create a InitParameters object and set configuration parameters
+    init_params = sl.InitParameters()
+    # init_params.camera_resolution = sl.RESOLUTION.AUTO # Use HD720 opr HD1200 video mode, depending on camera type.
+    init_params.camera_resolution = sl.RESOLUTION.VGA # Use HD720 opr HD1200 video mode, depending on camera type.
+    init_params.camera_fps = 30  # Set fps at 30
+
+    # Open the camera
+    err = zed.open(init_params)
+    if err != sl.ERROR_CODE.SUCCESS:
+        print("Camera Open : "+repr(err)+". Exit program.")
+        exit()
+
+    
+    image = sl.Mat()
+    runtime_parameters = sl.RuntimeParameters()
+
+    while True:
+        img = zed_render(zed, runtime_parameters, image, height, width)
+
+    
+def zed_image_pixel_difference_test():
+    import numpy as np
+    from PIL import Image
+    height = width = 84
+    zed = sl.Camera()
+
+    # Create a InitParameters object and set configuration parameters
+    init_params = sl.InitParameters()
+    # init_params.camera_resolution = sl.RESOLUTION.AUTO # Use HD720 opr HD1200 video mode, depending on camera type.
+    init_params.camera_resolution = sl.RESOLUTION.VGA # Use HD720 opr HD1200 video mode, depending on camera type.
+    init_params.camera_fps = 30  # Set fps at 30
+
+    # Open the camera
+    err = zed.open(init_params)
+    if err != sl.ERROR_CODE.SUCCESS:
+        print("Camera Open : "+repr(err)+". Exit program.")
+        exit()
+
+    
+    image = sl.Mat()
+    runtime_parameters = sl.RuntimeParameters()
+
+    
+    img_1 = zed_render(zed, runtime_parameters, image, height, width)
+    img_2 = zed_render(zed, runtime_parameters, image, height, width)
+    
+    img_1 = cv2.cvtColor(img_1, cv2.COLOR_RGB2GRAY).astype(np.float32)
+    img_2 = cv2.cvtColor(img_2, cv2.COLOR_RGB2GRAY).astype(np.float32)
+    gap_rgb = np.abs(img_1-img_2)
+    max_v = gap_rgb.max()
+    min_v = gap_rgb.min()
+    gap_rgb = (gap_rgb - min_v)/ (max_v - min_v)*255
+    # gap_gray = cv2.cvtColor(np.abs(img_1-img_2),cv2.COLOR_RGB2GRAY)
+
+    Image.fromarray(img_1.astype(np.uint8)).save('./temp_eval_debug/img_1.png')
+    Image.fromarray(img_2.astype(np.uint8)).save('./temp_eval_debug/img_2.png')
+    Image.fromarray(gap_rgb.astype(np.uint8)).save('./temp_eval_debug/img_gap_rgb.png')
+    # Image.fromarray(gap_gray).save('./temp_eval_debug/img_gap_gray.png')
+
+
+    
+
+
 
 if __name__ == "__main__":
     # test_single_ur3_real()
-    test_single_ur3_real_for_calibration_optitrack()
+    # test_single_ur3_real_for_calibration_optitrack()
     # test_single_ur3_real_pickandplace()
+    # test_single_ur3_real_peg()
+    # test_single_ur3_real_sweep()
+    # test_single_ur3_real_se3_calibration()
+    # zed_camera_streaming()
+    zed_image_pixel_difference_test()
+    
