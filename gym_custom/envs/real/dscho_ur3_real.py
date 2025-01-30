@@ -70,6 +70,9 @@ class EndEffectorPositionControlSingleWrapperReal(object): #URScriptWrapper_Dual
                 servoj_args = None, 
                 g_control_args = None,
                 multi_step = 1,
+                # dscho added 240807
+                rotation_z = False,
+                rot_scale = 1/10,
                 *args, 
                 **kwargs
                 ):
@@ -83,7 +86,10 @@ class EndEffectorPositionControlSingleWrapperReal(object): #URScriptWrapper_Dual
         self.gripper_force_scale = gripper_force_scale
         assert gripper_force_scale == 1
         self.null_obj_func = SO3Constraint(SO3=so3_constraint)
-     
+
+        self.rotation_z = rotation_z
+        self.rot_scale = rot_scale
+
         self.gripper_action = gripper_action
         self.dt = self.env.dt
         self.gripper_max_close_for_pickandplace = 255 # 6cm block
@@ -92,11 +98,19 @@ class EndEffectorPositionControlSingleWrapperReal(object): #URScriptWrapper_Dual
         self.g_control_args = g_control_args
         self.multi_step = multi_step
         if gripper_action:
-            self.act_low = act_low = np.array([-1, -1, -1, -1])
-            self.act_high = act_high= np.array([1, 1, 1, 1])
+            if rotation_z:
+                self.act_low = act_low = np.array([-1, -1, -1, -1, -1])
+                self.act_high = act_high= np.array([1, 1, 1, 1, 1])
+            else:
+                self.act_low = act_low = np.array([-1, -1, -1, -1])
+                self.act_high = act_high= np.array([1, 1, 1, 1])
         else :
-            self.act_low = act_low = np.array([-1, -1, -1])
-            self.act_high = act_high= np.array([1, 1, 1])
+            if rotation_z:
+                self.act_low = act_low = np.array([-1, -1, -1, -1])
+                self.act_high = act_high= np.array([1, 1, 1, 1])
+            else:
+                self.act_low = act_low = np.array([-1, -1, -1])
+                self.act_high = act_high= np.array([1, 1, 1])
     
         
         self.ur3_act_dim = 3 #self.wrapper_right.ndof
@@ -110,7 +124,11 @@ class EndEffectorPositionControlSingleWrapperReal(object): #URScriptWrapper_Dual
         if self.env.task=='covering' and self.env._episode_step is not None:
             # to prevent collision with object
             for _ in range(10):
-                self.step(np.array([0.0,0,1,0])) # move to z direction
+                self.step(np.array([0.0, 0, 1,0])) # move to z direction
+        elif self.env.task=='peg' and self.env._episode_step is not None:
+            # to prevent collision with object
+            for _ in range(10):
+                self.step(np.array([0.0, -1.0, 0,0])) # move to y direction
         elif self.env.task=='image_pickandplace' and self.env._episode_step is not None:
             # to prevent resetting while grasping the object
             for _ in range(10):
@@ -156,6 +174,21 @@ class EndEffectorPositionControlSingleWrapperReal(object): #URScriptWrapper_Dual
         
         desired_ee_pos = ee_pos + ur3_act
         
+        if self.rotation_z:
+            
+            # TODO: should check which axis is rot_z direction. (maybe z axis)
+            delta_rot_z = action[self.ee_xyz_pos_dim:self.ee_xyz_pos_dim+1]
+            euler = rotations.mat2euler(R)
+            rot_z = euler[-1]
+            desired_rot_z = (rot_z+ self.rot_scale*delta_rot_z) % (np.pi*2) # TODO: not sure how to compute the rot_z in UR3 convention
+            
+            predefined_euler_xy = np.array([-np.pi, 0])
+            desired_euler = np.concatenate([predefined_euler_xy, desired_rot_z])
+            desired_SO3 = rotations.euler2mat(desired_euler)            
+            self.null_obj_func.setSO3_des(desired_SO3)
+        
+        
+
         start = time.time()
         # ee_pos, null_obj_func, arm, q_init='current', threshold=0.01, threshold_null=0.001, max_iter=100, epsilon=1e-6
         q_des, iter_taken, err, null_obj = self.env.inverse_kinematics_ee(desired_ee_pos, self.null_obj_func, arm=self.env.which_hand, threshold=0.001, max_iter = 10)
@@ -202,6 +235,229 @@ class EndEffectorPositionControlSingleWrapperReal(object): #URScriptWrapper_Dual
 
     def __getattr__(self, name):
         return getattr(self.env, name)
+
+import numpy as np
+from scipy.spatial.transform import Rotation as R
+def euler_to_rmat(euler, degrees=False):
+    return R.from_euler("xyz", euler, degrees=degrees).as_matrix()
+
+def rmat_to_euler(rot_mat, degrees=False):
+    euler = R.from_matrix(rot_mat).as_euler("xyz", degrees=degrees)
+    return euler
+
+def rotation_matrix_to_axis_angle(R):
+    epsilon = 1e-7
+    trace = np.trace(R)
+    # Clamp value for numerical precision
+    cos_theta = max(min((trace - 1) / 2, 1.0), -1.0)
+    theta = np.arccos(cos_theta)
+
+    if abs(theta) < epsilon:
+        # No significant rotation
+        return np.zeros(3, dtype=float)
+    elif abs(theta - np.pi) < epsilon:
+        # Angle close to pi
+        # A robust way is to find which diagonal element of R is largest
+        # and use that axis
+        # Here is a simple method:
+        axis = np.array([R[0,0]+1, R[1,1]+1, R[2,2]+1])
+        axis_norm = np.linalg.norm(axis)
+        if axis_norm < epsilon:
+            # This is a rare numerical edge case
+            # fallback to e.g. using off-diagonal elements
+            axis = np.array([R[2,1] - R[1,2],
+                             R[0,2] - R[2,0],
+                             R[1,0] - R[0,1]])
+            axis_norm = np.linalg.norm(axis)
+        axis = axis / axis_norm
+        return axis * theta
+    else:
+        # General case
+        rx = (R[2,1] - R[1,2]) / (2*np.sin(theta))
+        ry = (R[0,2] - R[2,0]) / (2*np.sin(theta))
+        rz = (R[1,0] - R[0,1]) / (2*np.sin(theta))
+        return np.array([rx, ry, rz]) * theta
+    
+
+
+class EndEffectorSE3ControlSingleWrapperReal(object): #URScriptWrapper_DualUR3
+    
+    def __init__(self, 
+                env,                 
+                q_control_type = 'servoj', 
+                g_control_type = 'move_gripper_position',
+                gripper_force_scale = 1,
+                speedj_args = None, 
+                servoj_args = None, 
+                movej_args = None,
+                movep_args = None,
+                movel_args = None,
+                g_control_args = None,
+                multi_step = 1,
+                *args, 
+                **kwargs
+                ):
+        
+        '''
+        Assume that the input action (SE(3)) is reasonably close to end-effector. (e.g. generated SE(3) traj by diffusion model)
+        '''
+        self.env = env
+
+        self.q_control_type = q_control_type
+        self.g_control_type = g_control_type
+        # assert q_control_type == 'servoj', 'assume action is desired SE(3) of end effector'
+        
+        self.gripper_force_scale = gripper_force_scale
+        assert gripper_force_scale == 1
+        
+        self.null_obj_func = SO3Constraint()
+        
+        self.dt = self.env.dt
+        print('self.dt in wrapper : ', self.dt)
+        self.gripper_max_close_for_pickandplace = 255
+        self.speedj_args = speedj_args
+        self.servoj_args = servoj_args
+        self.movej_args = movej_args
+        self.movep_args = movep_args
+        self.movel_args = movel_args
+        self.g_control_args = g_control_args
+        self.multi_step = multi_step
+        
+        self.ur3_act_dim = 6 #self.wrapper_right.ndof
+        self.gripper_act_dim = 1 # self.wrapper_right.ngripperdof
+
+        self.T_gripper_tcp = np.eye(4)
+        # NOTE: actual tcp has some offset in z-axis translation and 180 rotation around z-axis
+        # self.T_gripper_tcp[:3,:3] = np.array([[-1.0, 0, 0],
+        #                                     [0, -1.0, 0],
+        #                                     [0, 0, 1.0]])
+        self.T_gripper_tcp[:3, 3] = np.array([0, 0, 0]) # NOTE: translation should be manually calibrated
+        
+    def reset(self, **kwargs):                
+        return self.env.reset(**kwargs)
+        
+
+    def gripper_action_scale(self, gripper_act):
+        # Assume gripper act : [-1, 1]
+        # Sim : -1 : fully open, 1 : fully closed
+        # Real : 0 : fully open, 255 : fully closed
+        gripper_act = gripper_act.copy()
+        rescaled_act = (gripper_act+1)/(1-(-1)) # 0~1 rescale 
+        rescaled_act = self.gripper_max_close_for_pickandplace*rescaled_act # *1.6 # 0~max_close_for_pickandplace rescale
+        return rescaled_act 
+        
+    def step(self, action, wait = False):
+        return self._step(action, wait=wait)
+
+    
+    def _step(self, action, wait = False):
+        action = action.copy() # action : desired SE(3) of gripper (T_w_gripper)
+        
+        desired_gripper_pose = action[:self.ur3_act_dim]
+        desired_gripper_pos = desired_gripper_pose[:3]
+        desired_gripper_euler = desired_gripper_pose[-3:]
+        T_w_gripper = np.eye(4)
+        T_w_gripper[:3, :3] = euler_to_rmat(desired_gripper_euler)
+        T_w_gripper[:3, 3] = desired_gripper_pos
+        
+        
+
+        T_w_tcp = T_w_gripper @ self.T_gripper_tcp
+                
+        gripper_act = self.gripper_force_scale*action[-self.gripper_act_dim:]
+        gripper_act = self.gripper_action_scale(gripper_act)
+                
+        if self.q_control_type =='speedj':
+            current_qpos = self.env.interface.get_joint_positions(wait=False)
+        
+        if self.q_control_type in ['speedj', 'servoj']:
+            # ee_pos, null_obj_func, arm, q_init='current', threshold=0.01, threshold_null=0.001, max_iter=100, epsilon=1e-6
+            self.null_obj_func.setSO3_des(T_w_gripper[:3, :3])
+            desired_tcp_pos = T_w_tcp[:3, 3]
+            q_des, iter_taken, err, null_obj = self.env.inverse_kinematics_ee(desired_tcp_pos, self.null_obj_func, arm=self.env.which_hand, threshold=0.001, max_iter = 100)
+            print('iter taken : {}, err : {} null_obj : {}'.format(iter_taken, err, null_obj))
+        
+        elif self.q_control_type == 'movej':
+            T_b_tcp =  np.linalg.inv(self.env.kinematics_params['T_wb_right']) @ T_w_tcp
+            desired_tcp_pos_b = T_b_tcp[:3, 3]
+            desired_tcp_R_b = T_b_tcp[:3, :3] # assume rigidbody -> desired_tcp_R == T_w_gripper
+            desired_tcp_axis_angle_b = rotation_matrix_to_axis_angle(desired_tcp_R_b)
+            desired_tcp_pose = np.concatenate([desired_tcp_pos_b, desired_tcp_axis_angle_b])
+            inverse_kin_has_solution = self.env.interface.is_within_safety_limits(desired_tcp_pose)
+            if not inverse_kin_has_solution:
+                print('desired_tcp_pose is not within safety limits! stay at the current joint positions!')
+                q_des = self.env.interface.get_joint_positions()
+            else:
+                q_des = self.env.interface.get_inverse_kin(desired_tcp_pose, maxPositionError =0.0001, maxOrientationError =0.0001)
+            
+        if self.q_control_type =='speedj':
+            ur3_action = (q_des-current_qpos)/(self.dt)
+            
+        elif self.q_control_type == 'servoj':
+            ur3_action = q_des
+            
+        elif self.q_control_type == 'movej':
+            ur3_action = q_des
+            
+            
+        if self.q_control_type in ['movep', 'movel']:            
+            # NOTE: should represent via robot base frame (not world frame), since movep,movec,movel uses inverse_kinematics of UR3, not custom one.
+            # i.e. T_btcp = T_bw @ T_wtcp
+            T_b_tcp =  np.linalg.inv(self.env.kinematics_params['T_wb_right']) @ T_w_tcp
+            desired_tcp_pos_b = T_b_tcp[:3, 3]
+            desired_tcp_R_b = T_b_tcp[:3, :3] # assume rigidbody -> desired_tcp_R == T_w_gripper
+            desired_tcp_axis_angle_b = rotation_matrix_to_axis_angle(desired_tcp_R_b)
+            ur3_action = np.concatenate([desired_tcp_pos_b, desired_tcp_axis_angle_b])
+
+        gripper_action = gripper_act
+        
+        q_control_args, g_control_args = self._get_control_kwargs(self.q_control_type, self.g_control_type, ur3_action, gripper_action)
+        
+        q_control_args.update({'wait' : wait})
+        # dscho mod
+        g_control_args.update({'wait' : wait})
+        
+        command = {self.q_control_type : q_control_args,
+                   self.g_control_type : g_control_args,
+                   }
+        for i in range(self.multi_step-1):
+            self.env.step(command)
+        return self.env.step(command)
+        
+    def _get_control_kwargs(self, q_control_type, g_control_type, ur3_action, gripper_action):
+
+        if q_control_type=='speedj':
+            q_control_args = copy.deepcopy(self.speedj_args)
+            q_control_args.update({'qd' : ur3_action})
+        elif q_control_type=='servoj':
+            q_control_args = copy.deepcopy(self.servoj_args)
+            q_control_args.update({'q' : ur3_action})
+        elif q_control_type=='movej':
+            q_control_args = copy.deepcopy(self.movej_args)
+            q_control_args.update({'q' : ur3_action})
+            
+        elif q_control_type=='movep':
+            q_control_args = copy.deepcopy(self.movep_args)
+            q_control_args.update({'pose' : ur3_action})
+        elif q_control_type=='movel':
+            q_control_args = copy.deepcopy(self.movel_args)
+            q_control_args.update({'pose' : ur3_action})
+
+        if g_control_type=='move_gripper_force':
+            raise NotImplementedError
+            g_control_args.update({'gf' : gripper_action})
+        elif g_control_type=='move_gripper_position':            
+            g_control_args = copy.deepcopy(self.g_control_args)
+            g_control_args.update({'g' : gripper_action})
+        elif g_control_type=='move_gripper_velocity':
+            raise NotImplementedError
+            g_control_args.update({'gd' : gripper_action})
+        
+        return q_control_args, g_control_args
+
+    def __getattr__(self, name):
+        return getattr(self.env, name)
+
 
 
 class DSCHOUR3RealEnv(UR3RealEnv):
@@ -320,6 +576,12 @@ class DSCHOUR3RealEnv(UR3RealEnv):
     def get_joint_positions(self, wait=False):        
         return self.interface.get_joint_positions(wait=wait)
     
+    def get_joint_speeds(self, wait=False):        
+        return self.interface.get_joint_speeds(wait=wait)
+    
+    def get_actual_tcp_pose(self, wait=False):
+        return self.interface.get_actual_tcp_pose(wait=wait)
+
     def call_stopj(self):
         self.interface.stopj(a=2.5, wait=True) # prevent protecive stop(invalid setpoints: sudden stop) error
         
@@ -359,14 +621,17 @@ class DSCHOUR3RealEnv(UR3RealEnv):
         self.interface.move_gripper(g=self._init_gripperpos)
         # return self._get_obs() # dscho commented (to prevent too frequent calls of get_joint_positions)
 
-    def get_endeff_pos(self, arm, q = None, wait=False):
+    def get_endeff_pos(self, arm, q = None, wait=False, return_with_rotation=False):
         if q is None:
             q= self.interface.get_joint_positions(wait=wait)
             
         else :
             pass
         R, p, T = self.forward_kinematics_ee(q, arm)
-        return p
+        if return_with_rotation:
+            return R,p
+        else:
+            return p
 
 
     # state_goal should be defined in child class
@@ -458,22 +723,34 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                                     # old ver2 (mounted)
                                     #  'peg_forward' : np.array([0.22, -0.4, 0.76]) + peg_insert_bias,
                                     #  'peg_backward' : np.array([0.22, -0.25421638, 0.80274345]),
+                                     
                                      # upright
-                                     'peg_forward' : np.array([-0.34, -0.345, 0.866]) + peg_insert_bias,
-                                     'peg_backward' : np.array([-0.15, -0.36, 0.9]),
+                                    #  'peg_forward' : np.array([-0.34, -0.345, 0.866]) + peg_insert_bias,
+                                    #  'peg_backward' : np.array([-0.15, -0.36, 0.9]),
                                      'sweep_forward' : np.array([[0.08, -0.385, 0.8],
                                                                 [-0.15, -0.385, 0.8]]),
                                      'sweep_backward' : np.array([-0.039, -0.385, 0.8]),                                     
-                                     'covering_forward' : np.array([0.178, -0.368, 0.78]),
-                                     'covering_backward' : np.array([-0.1, -0.34,  0.9]),
+                                    #  'covering_forward' : np.array([0.178, -0.368, 0.78]),
+                                    #  'covering_backward' : np.array([-0.1, -0.34,  0.9]),
                                      # left top : [-0.04018892 -0.25101522  0.79990623] left bottom : [-0.04441312 -0.40260624  0.80429047]
                                      # right top : [ 0.17620757 -0.24521262  0.79909224] right bottom : [ 0.18331614 -0.40192872  0.7892433 ]
-                                     'image_pickandplace_forward' : np.array([0.067, -0.324, 0.78]),
-                                     'image_pickandplace_backward' : np.array([[-0.04018892, -0.25101522,  0.79990623],
-                                                                               [-0.04441312, -0.40260624,  0.80429047],
-                                                                               [ 0.17620757, -0.24521262,  0.79909224],
-                                                                               [ 0.18331614, -0.40192872,  0.7892433 ]]),
+                                    #  'image_pickandplace_forward' : np.array([0.067, -0.324, 0.78]),
+                                    #  'image_pickandplace_backward' : np.array([[-0.04018892, -0.25101522,  0.79990623],
+                                    #                                            [-0.04441312, -0.40260624,  0.80429047],
+                                    #                                            [ 0.17620757, -0.24521262,  0.79909224],
+                                    #                                            [ 0.18331614, -0.40192872,  0.7892433 ]]),
                                      
+                                     # 241106 (after rearrangement of robots in ASRI)(not yet implemented)
+                                     'peg_forward' : np.array([0.321, 0.37, 0.899]),
+                                     'peg_backward' : np.array([0.316, 0.11, 0.9]),
+                                     'covering_forward' : np.array([0.394, 0.29, 0.78]),
+                                     'covering_backward' : np.array([0.306, -0.04, 0.9]),
+                                     'image_pickandplace_forward' : np.array([-0.367, -0.05, 0.78]),
+                                     'image_pickandplace_backward' : np.array([[-0.281, 0.09,  0.78],
+                                                                               [-0.459, 0.09,  0.78],
+                                                                               [-0.278, -0.165,  0.78],
+                                                                               [-0.463, -0.162,  0.78]]),
+
                                      }
 
         self.previous_ee_pos = None
@@ -498,7 +775,11 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                 # old ver2 (mounted)
                 # self.set_initial_joint_pos(np.array([1.731179, -0.87071163, 1.14605093, -1.68206484, 0.79754043, 1.33863306]))
                 # upright
-                self.set_initial_joint_pos(np.array([0.54606271, -0.68923074, 0.39925241, -1.28086836, -1.56263048, -1.01299936]))
+                # self.set_initial_joint_pos(np.array([0.54606271, -0.68923074, 0.39925241, -1.28086836, -1.56263048, -1.01299936]))
+                
+                # 241106 (after rearrangement of robots in ASRI)
+                # init ee pos : [0.394,  0.29,  0.78]
+                self.set_initial_joint_pos(np.array([3.74169946, -1.06351883,  1.05295706, -1.82543356, -1.56358225, 0.56332153])) # right arm
                 
             else:
                 # old ver2 (mounted)
@@ -506,7 +787,14 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                 # upright (x=0)
                 # self.set_initial_joint_pos(np.array([1.17900097, -1.34164936, 1.24671173, -1.4816764, -1.5633033, -0.3801921 ]))
                 # upright (x=-0.148)
-                self.set_initial_joint_pos(np.array([0.90049171, -1.21185524, 1.07228374, -1.43334037, -1.56223375, -0.65869314]))
+                # self.set_initial_joint_pos(np.array([0.90049171, -1.21185524, 1.07228374, -1.43334037, -1.56223375, -0.65869314]))
+                
+                # 241106 (after rearrangement of robots in ASRI)
+                # init ee pos : [-0.3263,  0.1537,  1.01]
+                # self.set_initial_joint_pos(np.array([-0.7485, -1.2905,  0.6997,  -1.0382, -1.5853, -0.66])) # left arm
+                
+                # init ee pos : [0.306,  -0.04,  0.97]                
+                self.set_initial_joint_pos(np.array([3.10677338, -1.56326229, 1.52987003, -1.59008104, -1.50254471, -0.001])) # right arm
                 
 
             self.set_initial_gripper_pos(np.array([255]))
@@ -531,11 +819,27 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
             if self.reset_at_goal:
                 # upright
                 # init ee pos : [ 0.17827251 -0.36799464  0.7791238 ]
-                self.set_initial_joint_pos(np.array([1.71711588, -1.0820306,  1.48655272, -1.94703085, -1.51943809, -1.47388536]))
+                # self.set_initial_joint_pos(np.array([1.71711588, -1.0820306,  1.48655272, -1.94703085, -1.51943809, -1.47388536]))
+                
+                # 241106 (after rearrangement of robots in ASRI)
+                # init ee pos : [0.394,  0.29,  0.78]
+                self.set_initial_joint_pos(np.array([ 3.54779124, -0.81062395,  1.08774757, -1.94419986, -1.57904655,  0.42889708])) # right arm
+                
+
             else:
                 # upright
                 # init ee pos : [-0.13195436 -0.34062076  0.98709191]
-                self.set_initial_joint_pos(np.array([0.89681441, -1.2870949, 0.79797077, -1.11509735, -1.58500892, -2.22543604]))
+                # self.set_initial_joint_pos(np.array([0.89681441, -1.2870949, 0.79797077, -1.11509735, -1.58500892, -2.22543604]))
+
+                # 241106 (after rearrangement of robots in ASRI)
+                # init ee pos : [-0.3263,  0.1537,  1.01]
+                # self.set_initial_joint_pos(np.array([-0.7485, -1.2905,  0.6997,  -1.0382, -1.5853, -2.3141])) # left arm
+                
+                # init ee pos : [0.306,  -0.04,  0.97]                
+                self.set_initial_joint_pos(np.array([2.62560749, -1.56763441, 1.19621611, -1.2121237, -1.55632431, -0.48850662])) # right arm
+                
+                
+
 
             self.set_initial_gripper_pos(np.array([255]))
 
@@ -545,14 +849,36 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
             if self.reset_at_goal:
                 # upright
                 # init ee pos : [ 0.06188416 -0.34819109  0.83701621]
-                self.set_initial_joint_pos(np.array([1.43031359, -1.3706773, 1.60599089 ,-1.78116781, -1.58229429 ,-1.73337967]))
+                # self.set_initial_joint_pos(np.array([1.43031359, -1.3706773, 1.60599089 ,-1.78116781, -1.58229429 ,-1.73337967]))
+                
+                # 241106 (after rearrangement of robots in ASRI)
+                # init ee pos : [-0.35,  -0.02,  0.9]
+                self.set_initial_joint_pos(np.array([-0.2740143,  -1.46871597,  1.41530895 , -1.53634483 , -1.55199987, -1.80799324])) # left arm
             else:
                 # upright
                 # init ee pos : [ 0.06188416 -0.34819109  0.83701621]
-                self.set_initial_joint_pos(np.array([1.43031359, -1.3706773, 1.60599089 ,-1.78116781, -1.58229429 ,-1.73337967]))
+                # self.set_initial_joint_pos(np.array([1.43031359, -1.3706773, 1.60599089 ,-1.78116781, -1.58229429 ,-1.73337967]))
+                
+                # 241106 (after rearrangement of robots in ASRI)
+                # init ee pos : [-0.35,  -0.02,  0.9]
+                self.set_initial_joint_pos(np.array([-0.2740143,  -1.46871597,  1.41530895 , -1.53634483 , -1.55199987, -1.80799324])) # left arm
+
+            self.set_initial_gripper_pos(np.array([0]))
+        elif self.task == 'moka':
+            if self.reset_at_goal:
+                # upright
+                # init ee pos : [ 0.06188416 -0.34819109  0.83701621]
+                # self.set_initial_joint_pos(np.array([1.43031359, -1.3706773, 1.60599089 ,-1.78116781, -1.58229429 ,-1.73337967]))
+                raise NotImplementedError
+            else:
+                # upright
+                # init ee pos : [0.2025, -0.0478,  0.1450]
+                # self.set_initial_joint_pos(np.array([0.2195821, -1.18186123, -1.88059885, -1.72113067, 1.66767204, np.pi*3/2]))
+                self.set_initial_joint_pos(np.array([0.15526275, -0.77878362, -1.95732385, -1.9798978, 1.64737856, 1.70835387]))
+                
             self.set_initial_gripper_pos(np.array([0]))
         else:
-            self.set_initial_joint_pos(np.array([98.68409626, -42.59550851, 91.25542542, -132.12103827, 45.30285526, -10.99222322])*np.pi/180.0)
+            self.set_initial_joint_pos(np.array([3.10677338, -1.56326229, 1.52987003, -1.59008104, -1.50254471, -0.001]))
             self.set_initial_gripper_pos(np.array([0]))
 
 
@@ -628,7 +954,8 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
             elif self.task in ['image_pickandplace']:
                 goals = self.predefined_goal_dict['image_pickandplace_backward']
                 goal = goals[np.random.randint(goals.shape[0])]
-                
+            elif self.task in ['moka']:
+                raise NotImplementedError
         else :
             if not self.has_object: # reach or tasks with always closed gripper
                 # dscho added for ARL   
@@ -641,6 +968,8 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                     goal = self.predefined_goal_dict['covering_forward']
                 elif self.task in ['image_pickandplace']:
                     goal = self.predefined_goal_dict['image_pickandplace_forward']
+                elif self.task in ['moka']:
+                    goal = np.zeros(3)
                 else:
                     goal_ee_pos = np.random.uniform(
                         self.goal_ee_pos_space.low,
@@ -681,10 +1010,11 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
         return goal
     
 
-    def reset_model(self, init=None, goal=None):
-        if prompt_yes_or_no('Resetting... Init qpos is %s deg. Did you prepare the GRASPING and OBJECT SETTING?'%(np.rad2deg(self._init_qpos))) is False:
-            print('exiting program!')
-            sys.exit()
+    def reset_model(self, init=None, goal=None, prompt = True):
+        if prompt:
+            if prompt_yes_or_no('Resetting... Init qpos is %s deg. Did you prepare the GRASPING and OBJECT SETTING?'%(np.rad2deg(self._init_qpos))) is False:
+                print('exiting program!')
+                sys.exit()
         
         
         if self.task=='sweep':
@@ -734,7 +1064,7 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
         gripperpos = obs_dict['gripperpos']
         gripperpos = self.gripper_rescale(gripper_state=gripperpos)
         # grippervel = obs_dict['grippervel']
-        ee_pos = self.get_endeff_pos(arm=self.which_hand, q = qpos)
+        R, ee_pos = self.get_endeff_pos(arm=self.which_hand, q = qpos, return_with_rotation=True)
 
         
         if self.trigonometry_observation:
@@ -765,7 +1095,7 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
             obs = np.concatenate([qpos, qvel, ee_pos, obj_pos])
         elif self.observation_type == 'ee_object_pos':
             obs = np.concatenate([ee_pos, obj_pos, obj_rel_pos])
-        elif self.observation_type == 'ee_object_pos_w_grip_custom_vel' or self.observation_type=='ee_object_pos_w_grip' or self.observation_type=='ee_object_pos_w_custom_vel':
+        elif self.observation_type == 'ee_object_pos_w_grip_custom_vel' or self.observation_type == 'ee_object_pos_rot_w_grip_custom_vel' or self.observation_type=='ee_object_pos_w_grip' or self.observation_type=='ee_object_pos_w_custom_vel':
             if self.previous_ee_pos is None:
                 ee_velp = np.zeros_like(ee_pos)
             else:
@@ -787,6 +1117,12 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
             if self.observation_type=='ee_object_pos_w_grip_custom_vel':
                 obs = np.concatenate([
                     ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), gripper_state, 
+                    obj_velp.ravel(), ee_velp
+                ])
+            elif self.observation_type=='ee_object_pos_rot_w_grip_custom_vel':
+                ee_euler = rotations.mat2euler(R)
+                obs = np.concatenate([
+                    ee_pos, obj_pos.ravel(), obj_rel_pos.ravel(), ee_euler, gripper_state, 
                     obj_velp.ravel(), ee_velp
                 ])
             elif self.observation_type=='ee_object_pos_w_custom_vel':
@@ -910,6 +1246,9 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                     reward = 0.0    
             else:    
                 reward = -placingDist
+            return reward
+        elif self.task in ['moka']:
+            reward = 0
             return reward
         else:
             if self.reward_success_criterion=='full_state':
@@ -1311,7 +1650,9 @@ class DSCHOSingleUR3DrawerOpenRealEnv(DSCHOSingleUR3GoalRealEnv):
 # dscho added for ARL
 class DSCHOSingleUR3PegRealEnv(DSCHOSingleUR3GoalRealEnv):
     def __init__(self, *args, **kwargs):        
-        assert kwargs.get('so3_constraint')=='vertical_side-180'
+        # assert kwargs.get('so3_constraint')=='vertical_side-180'
+        # assert kwargs.get('so3_constraint')=='vertical_front'
+        assert kwargs.get('so3_constraint')=='vertical_front-180'
         super().__init__(has_object=False, block_gripper=True, task='peg', *args, **kwargs)
 
 class DSCHOSingleUR3SweepRealEnv(DSCHOSingleUR3GoalRealEnv):
@@ -1321,15 +1662,29 @@ class DSCHOSingleUR3SweepRealEnv(DSCHOSingleUR3GoalRealEnv):
 
 class DSCHOSingleUR3CoveringRealEnv(DSCHOSingleUR3GoalRealEnv):
     def __init__(self, *args, **kwargs):
+        # assert kwargs.get('so3_constraint')=='vertical_front-180'
         assert kwargs.get('so3_constraint')=='vertical_front-180'
         super().__init__(has_object=False, block_gripper=True, task='covering', *args, **kwargs)
 
 
 class DSCHOSingleUR3ImagePickAndPlaceRealEnv(DSCHOSingleUR3GoalRealEnv):
     def __init__(self, *args, **kwargs):
-        assert kwargs.get('so3_constraint')=='vertical_front-180'
+        # assert kwargs.get('so3_constraint')=='vertical_front-180'
+        assert kwargs.get('so3_constraint')=='vertical_side-180'
         # since 
         super().__init__(has_object=False, block_gripper=False, task='image_pickandplace', *args, **kwargs)
+
+class DSCHOSingleUR3MOKARealEnv(DSCHOSingleUR3GoalRealEnv):
+    def __init__(self, *args, **kwargs):
+        # assert kwargs.get('so3_constraint')=='vertical_front-180'
+        # since 
+        super().__init__(has_object=False, block_gripper=False, task='moka', *args, **kwargs)
+
+
+class DSCHOSingleUR3RealEnv(DSCHOSingleUR3GoalRealEnv):
+    def __init__(self, *args, **kwargs):
+        super().__init__(has_object=False, block_gripper=False, task=None, *args, **kwargs)
+
 
 
 
@@ -1354,6 +1709,7 @@ def get_default_env_kwargs():
     # host_ip_right = '192.168.2.4' # assume optitrack wifi
     env_kwargs = dict(
         host_ip=host_ip_left, # But which hand should be right in current simulation xml setting! (In sim, only right arm is used as upright)
+        # host_ip=host_ip_left, # But which hand should be right in current simulation xml setting! (In sim, only right arm is used as upright)
         rate=10, # 너무 느리면 20Hz정도까지 늘려보기                  
         #################### env kwargs
         sparse_reward = True,               
@@ -1363,7 +1719,7 @@ def get_default_env_kwargs():
         reward_success_criterion='ee_pos',
         distance_threshold = 0.05,
         # initMode='vertical',
-        which_hand='left', # 'right', 
+        which_hand='right', 
         so3_constraint ='vertical_side-180',
         # task = 'pickandplace',
         observation_type='ee_object_pos_w_grip_custom_vel', #'joint_q', #'ee_object_object', #'ee_object_all'
@@ -1381,6 +1737,7 @@ def get_default_wrapper_kwargs(env):
                 action_downscale=0.01, # something wrong... (waving motion) -> servoj? or smaller scale or lower Hz?
                 speedj_args = {'a': 5, 't': 2/env.rate._freq, 'wait': False},
                 servoj_args = {'t': 2/env.rate._freq, 'wait': False},
+                movej_args = {'t': 2/env.rate._freq, 'a' : 1.0, 'v' : 0.5, 'wait': False},
                 g_control_args = {'wait' : False},
                 so3_constraint='vertical_side-180', 
                 )
@@ -1741,7 +2098,8 @@ def zed_render(zed, runtime_parameters, image, height, width):
                 
         raw_data = image.get_data()
         # Only for PickAndPlace
-        raw_data = raw_data[100:, 250:550]
+        # raw_data = raw_data[100:, 250:550]
+        raw_data = raw_data[100:, 200:500] # left arm 241106 (after rearrangement of robots in ASRI)(not yet implemented)
     
         cv2.imshow("ZED", raw_data)
         cv2.waitKey(1)
@@ -1759,20 +2117,32 @@ def test_single_ur3_real_se3_calibration():
     # task='peg'
     # task='sweep'
     # task='covering'
-    task='image_pickandplace'
+    # task='image_pickandplace'
+    task='moka'
 
     if task=='peg':
         so3_constraint ='vertical_side-180'
+        rotation_z = False
+        observation_type='ee_object_pos_w_grip_custom_vel'
     elif task in ['sweep','covering', 'image_pickandplace']:
         so3_constraint ='vertical_front-180'
+        rotation_z = False
+        observation_type='ee_object_pos_w_grip_custom_vel'
+    elif task in ['moka']:
+        so3_constraint ='vertical_side-180'
+        rotation_z = True
+        observation_type='ee_object_pos_rot_w_grip_custom_vel'
     env_kwargs = get_default_env_kwargs()
     rate = 10
+    
 
     env_kwargs.update(dict(rate = rate,
                            so3_constraint =so3_constraint,
                            reset_at_goal = False,
                            auto_calibrate = True, # False,
+                           observation_type=observation_type,
                            ))
+    
     if task=='peg':
         env = DSCHOSingleUR3PegRealEnv(**env_kwargs)
     elif task=='sweep':
@@ -1781,32 +2151,176 @@ def test_single_ur3_real_se3_calibration():
         env = DSCHOSingleUR3CoveringRealEnv(**env_kwargs)
     elif task=='image_pickandplace':
         env = DSCHOSingleUR3ImagePickAndPlaceRealEnv(**env_kwargs)
-        
+    elif task=='moka':
+        env = DSCHOSingleUR3MOKARealEnv(**env_kwargs)
     wrapper_kwargs = get_default_wrapper_kwargs(env)         
     wrapper_kwargs.update({'action_downscale' : 0.01, 'speedj_args' : {'a': 5, 't': 2/env.rate._freq, 'wait': False}, 
                                 'multi_step' : 1, 'q_control_type' : 'speedj',
                                 'so3_constraint' : so3_constraint,
+                                'rotation_z' : rotation_z,
                                 })    
     env = EndEffectorPositionControlSingleWrapperReal(**wrapper_kwargs)
     print(env.get_obs_dict()['qpos'])    
     obs = env.reset()
     print('done')
+
+    print(f"endeff pos: {env.get_endeff_pos(arm='right')}")
     
-    for i in range(100):
-        env.step(np.array([0,0,0,0]))
+    # Move robot to desired position
+    while True:
+        current_pos = env.get_endeff_pos(arm='right')
+        delta_pos_x = 0.2 - current_pos[0]
+
+        if np.linalg.norm(delta_pos_x) < 0.05:  # A small threshold to check if the position is reached
+            print(f"Reached desired position: {current_pos}")
+            break
+
+        # Create action to move towards the desired position
+        action = np.zeros(5)  # Assuming the action has 5 dimensions: [dx, dy, dz, d_rot_z, gripper]
+        action[0] = 0.5
+
+        for _ in range(5):
+            env.step(action)
+
+    while True:
+        current_pos = env.get_endeff_pos(arm='right')
+        delta_pos_z = 0.72 - current_pos[2]
+
+        if np.linalg.norm(delta_pos_z) < 0.04:  # A small threshold to check if the position is reached
+            print(f"Reached desired position: {current_pos}")
+            break
+
+        # Create action to move towards the desired position
+        action = np.zeros(5)  # Assuming the action has 5 dimensions: [dx, dy, dz, d_rot_z, gripper]
+        action[2] = -0.5
+
+        for _ in range(5):
+            env.step(action)
+
+    print(f"Final endeff pos: {env.get_endeff_pos(arm='right')}")
+
+
+    while True:
+        if task=='moka':
+            # if prompt_yes_or_no("Press 'Y' to move gripper. Press 'n' to terminate program.") is False:
+            #     print('exiting program!')
+            #     sys.exit()
+            env.interface.move_gripper_position(g=10.0, wait=True)
+            q = env.get_obs_dict()['qpos']
+            R, p, T = env.forward_kinematics_ee(q=q, arm='right')
+
+            time.sleep(1)
+            env.interface.move_gripper_position(g=255.0, wait=True)
+            q = env.get_obs_dict()['qpos']
+            R, p, T = env.forward_kinematics_ee(q=q, arm='right')
+    
+        else:
+            env.step(np.array([0,0,0,0]))
+
+    obs = env.reset()
+    print('reset, obs : {}'.format(obs))
+    
+#==================================================
+    # while True:
+    # # for i in range(3):
+    #     q = env.get_obs_dict()['qpos']
+    #     R, p, T = env.forward_kinematics_ee(q=q, arm='right')
+    #     obs = env._get_obs()
+    #     print(obs)
+    #     # print(R)
+    #     # print(rotations.mat2euler(R))
+    #     # print(f'{p} {q}')
+    #     time.sleep(0.1)
+    
+def test_single_ur3_real_se3_calibration_dscho_custom():
+    task='peg'
+    # task='sweep'
+    # task='covering'
+    # task='image_pickandplace'
+    # task='moka'
+
+    if task=='peg':
+        so3_constraint ='vertical_front-180' # right arm (after rearrange ASRI)
+        rotation_z = False
+        observation_type='ee_object_pos_w_grip_custom_vel'
+    elif task == 'covering':
+        so3_constraint ='vertical_front-180' # right arm (after rearrange ASRI)
+        rotation_z = False
+        observation_type='ee_object_pos_w_grip_custom_vel'
+    elif task in ['sweep','image_pickandplace']:
+        so3_constraint ='vertical_side-180'
+        rotation_z = False
+        observation_type='ee_object_pos_w_grip_custom_vel'
+    elif task in ['moka']:
+        so3_constraint ='vertical_side-180'
+        rotation_z = True
+        observation_type='ee_object_pos_rot_w_grip_custom_vel'
+    env_kwargs = get_default_env_kwargs()
+    
+    rate = 10
+    
+
+    env_kwargs.update(dict(rate = rate,
+                           so3_constraint =so3_constraint,
+                           reset_at_goal = False,
+                           auto_calibrate = True, # False,
+                           observation_type=observation_type,
+                           ))
+    
+    if task=='peg':
+        host_ip_right = '192.168.5.102'
+        env_kwargs.update({'host_ip' : host_ip_right,
+                           'auto_calibrate' : False,
+                           })
+                           
+        env = DSCHOSingleUR3PegRealEnv(**env_kwargs)
+    elif task=='sweep':
+        env = DSCHOSingleUR3SweepRealEnv(**env_kwargs)
+    elif task=='covering':
+        host_ip_right = '192.168.5.102'
+        env_kwargs.update({'host_ip' : host_ip_right,
+                           'auto_calibrate' : False,
+                           })
+        env = DSCHOSingleUR3CoveringRealEnv(**env_kwargs)
+    elif task=='image_pickandplace':
+        host_ip_left = '192.168.5.101'
+        env_kwargs.update({'host_ip' : host_ip_left})
+        env = DSCHOSingleUR3ImagePickAndPlaceRealEnv(**env_kwargs)
+    elif task=='moka':
+        env = DSCHOSingleUR3MOKARealEnv(**env_kwargs)
+    wrapper_kwargs = get_default_wrapper_kwargs(env)         
+    wrapper_kwargs.update({'action_downscale' : 0.01, 'speedj_args' : {'a': 5, 't': 2/env.rate._freq, 'wait': False}, 
+                                'multi_step' : 1, 'q_control_type' : 'speedj',
+                                'so3_constraint' : so3_constraint,
+                                'rotation_z' : rotation_z,
+                                })    
+    env = EndEffectorPositionControlSingleWrapperReal(**wrapper_kwargs)
+    print(env.get_obs_dict()['qpos'])    
+    obs = env.reset()
+    print('done')
+
+    print(f"endeff pos: {env.get_endeff_pos(arm='right')}")
+    
+    # for i in range(100):
+    #     env.step(np.array([0,0,0,1]))
 
     # obs = env.reset()
     # print('reset, obs : {}'.format(obs))
     
+    # import numpy as np
+    # from scipy.spatial.transform import Rotation as R
+    # def euler_to_rmat(euler, degrees=False):
+    #     return R.from_euler("xyz", euler, degrees=degrees).as_matrix()
+
 
     while True:
     # for i in range(3):
         q = env.get_obs_dict()['qpos']
-        R, p, T = env.forward_kinematics_ee(q=q, arm='left')
-        # print(R)
+        R, p, T = env.forward_kinematics_ee(q=q, arm='right')
+        
+        print(R)
         print(f'{p} {q}')
         time.sleep(0.1)
-    
     
     
 def zed_camera_streaming():
@@ -1816,6 +2330,20 @@ def zed_camera_streaming():
 
     # Create a InitParameters object and set configuration parameters
     init_params = sl.InitParameters()
+    
+    # for multiple camera case
+    # cameras = sl.Camera.get_device_list()
+    # print('cameras : ', cameras)
+    # serial_1 = cameras[0].serial_number
+    # serial_2 = cameras[1].serial_number
+    # print(serial_1, serial_2)
+    
+    serial_1 = 13426 # camera 1
+    serial_2 = 26236181 # camera 2
+    init_params.set_from_serial_number(serial_2)
+
+
+
     # init_params.camera_resolution = sl.RESOLUTION.AUTO # Use HD720 opr HD1200 video mode, depending on camera type.
     init_params.camera_resolution = sl.RESOLUTION.VGA # Use HD720 opr HD1200 video mode, depending on camera type.
     init_params.camera_fps = 30  # Set fps at 30
@@ -1825,9 +2353,19 @@ def zed_camera_streaming():
     if err != sl.ERROR_CODE.SUCCESS:
         print("Camera Open : "+repr(err)+". Exit program.")
         exit()
+    
+    # Set brightness (acceptable range is typically 0 to 8)
+    brightness_value = 8 # max brightness
+    res = zed.set_camera_settings(sl.VIDEO_SETTINGS.BRIGHTNESS, brightness_value)
+    if res != sl.ERROR_CODE.SUCCESS:
+        print("Failed to set brightness.")
+    else:
+        print(f"Brightness set to: {brightness_value}")
 
+    # getDeviceList(), and provide their serial number for identification. Once you know which ZED should be opened, you can request a specific serial number with InitParameters.input.setFromSerialNumber(1010)
     
     image = sl.Mat()
+    
     runtime_parameters = sl.RuntimeParameters()
 
     while True:
@@ -1873,7 +2411,85 @@ def zed_image_pixel_difference_test():
     Image.fromarray(gap_rgb.astype(np.uint8)).save('./temp_eval_debug/img_gap_rgb.png')
     # Image.fromarray(gap_gray).save('./temp_eval_debug/img_gap_gray.png')
 
+def ur3_urscript_inverse_kinematics_test():
+    import numpy as np
+    from scipy.spatial.transform import Rotation
 
+    def rmat_to_euler(rot_mat, degrees=False):
+        euler = Rotation.from_matrix(rot_mat).as_euler("xyz", degrees=degrees)
+        return euler
+    
+    
+
+    
+
+    from gym_custom.envs.real.dscho_ur3_real import get_default_env_kwargs, get_default_wrapper_kwargs, DSCHOSingleUR3RealEnv, EndEffectorSE3ControlSingleWrapperReal
+
+    env_kwargs = get_default_env_kwargs()
+    rate = 5 # 10
+    host_ip_right = '192.168.5.102'
+    
+    env_kwargs.update(dict(rate = rate,
+                           host_ip = host_ip_right,
+                            so3_constraint= None, 
+                           reset_at_goal=False, # reset_at_goal,
+                           auto_calibrate=False,
+                           predefined_goal=np.zeros(3), # dummy
+                        ))
+    
+    env = DSCHOSingleUR3RealEnv(**env_kwargs)
+        
+    wrapper_kwargs = get_default_wrapper_kwargs(env)     
+    
+    
+    # # # speedj
+    # wrapper_kwargs.update({'action_downscale' : 0.005, 
+    #                         'multi_step' : 1, 'q_control_type' : 'speedj', 'speedj_args': {'a': 0.1, 't': 2/env.rate._freq, 'wait': False},
+    #                         'gripper_action' : False
+    #                         })    
+    
+    # # servoj (non-blocking)
+    # wrapper_kwargs.update({'action_downscale' : 0.01, # 0.03, 
+    #                             'multi_step' : 1, 'q_control_type' : 'servoj', 'servoj_args' : {'t': 3, 'wait': False},
+    #                             })    
+    
+    # movej (blocking)
+    wrapper_kwargs.update({'action_downscale' : 0.01, # 0.03, y
+                                'multi_step' : 1, 
+                                'q_control_type' : 'movej', 
+                                'movej_args': {'t':1, 'a' : 1.4, 'v' : 1.0, 'wait': False}, # 
+                                # 'q_control_type' : 'movep', 
+                                # 'movep_args': {'a' : 1.0, 'v' : 0.1, 'wait': False},
+                                # 'q_control_type' : 'movel', 
+                                # 'movel_args': {'t' : 5, 'a' : 1.0, 'v' : 0.3, 'wait': False},
+                                })        
+    
+    env = EndEffectorSE3ControlSingleWrapperReal(**wrapper_kwargs)
+    obs = env.reset()
+    
+    for i in range(3):
+        print(f'{i}th action')
+
+        # # temp for ur3 test
+        T_w_gripper = np.array([[0, -1, 0, 0.35],
+                                [-1, 0, 0, -0.1],
+                                [0, 0, -1, 0.8+i*0.05],
+                                [ 0.,          0.,          0. ,         1.        ]])
+
+        
+        print('T_w_gripper : ', T_w_gripper)
+
+
+        R = T_w_gripper[:3, :3]
+        p = T_w_gripper[:3, 3]
+        euler = rmat_to_euler(R)
+        gripper_act = -np.ones(1) # open
+        action = np.concatenate([p, euler, gripper_act])
+        env.step(action, wait=True)
+    
+
+    tcp_pose = env.interface.get_actual_tcp_pose(wait=True)
+    print('tcp_pose : ', tcp_pose)
     
 
 
@@ -1885,6 +2501,8 @@ if __name__ == "__main__":
     # test_single_ur3_real_peg()
     # test_single_ur3_real_sweep()
     # test_single_ur3_real_se3_calibration()
+    # test_single_ur3_real_se3_calibration_dscho_custom()
     # zed_camera_streaming()
-    zed_image_pixel_difference_test()
+    # zed_image_pixel_difference_test()
+    ur3_urscript_inverse_kinematics_test()
     

@@ -838,7 +838,7 @@ end
         '''
         raise NotImplementedError('Function Not yet implemented')
         
-    def get_inverse_kin(self, x, qnear =[-1.6, -1.7, -2.2, -0.8, 1.6, 0.0], maxPositionError =0.0001, maxOrientationError =0.0001):
+    def get_inverse_kin(self, x, qnear = None, maxPositionError =0.0001, maxOrientationError =0.0001, wait=True):
         '''
         Inverse kinematic transformation (tool space -> joint space). 
         Solution closest to current joint positions is returned, unless qnear defines one.
@@ -846,7 +846,7 @@ end
         Parameters:
         x:                   tool pose (spatial vector)
         qnear:               joint positions to select solution. 
-                             Optional.
+                             Optional. dscho NOTE: previous default value: [-1.6, -1.7, -2.2, -0.8, 1.6, 0.0]
         maxPositionError:    Define the max allowed position error. 
                              Optional.
         maxOrientationError: Define the max allowed orientation error. 
@@ -855,8 +855,57 @@ end
         Return Value:
         joint positions        
         '''
-        raise NotImplementedError('Function Not yet implemented')
 
+        if type(x) is np.ndarray:
+            x=x.tolist()
+        # prg = ""
+        if qnear is not None:
+            prg = '''def compute_ik():
+    q = get_inverse_kin(p{x}, qnear={qnear}, maxPositionError={maxPositionError}, maxOrientationError={maxOrientationError})
+    write_output_float_register(0, q[0])
+    write_output_float_register(1, q[1])
+    write_output_float_register(2, q[2])
+    write_output_float_register(3, q[3])
+    write_output_float_register(4, q[4])
+    write_output_float_register(5, q[5])
+end
+compute_ik()
+'''
+            
+        else:
+            prg = '''def compute_ik():
+    q = get_inverse_kin(p{x}, maxPositionError={maxPositionError}, maxOrientationError={maxOrientationError})
+    write_output_float_register(0, q[0])
+    write_output_float_register(1, q[1])
+    write_output_float_register(2, q[2])
+    write_output_float_register(3, q[3])
+    write_output_float_register(4, q[4])
+    write_output_float_register(5, q[5])
+end
+compute_ik()
+'''
+            
+        
+        programString = prg.format(**locals())
+        self.robotConnector.RealTimeClient.Send(programString)
+        
+        # self.waitRobotIdleOrStopFlag()
+        # if(wait):
+        #     self.sync()
+        time.sleep(0.1)
+        joint0 = self.robotConnector.RobotModel.OutputDoubleRegister()[0]
+        joint1 = self.robotConnector.RobotModel.OutputDoubleRegister()[1]
+        joint2 = self.robotConnector.RobotModel.OutputDoubleRegister()[2]
+        joint3 = self.robotConnector.RobotModel.OutputDoubleRegister()[3]
+        joint4 = self.robotConnector.RobotModel.OutputDoubleRegister()[4]
+        joint5 = self.robotConnector.RobotModel.OutputDoubleRegister()[5]
+        solution = [joint0, joint1, joint2, joint3, joint4, joint5]
+        # print("IK solution from the robot:", solution)
+
+        return solution
+        
+        # raise NotImplementedError('Function Not yet implemented')
+    
     def get_joint_temp(self,j):
         '''
         Returns the temperature of joint j
@@ -1017,7 +1066,29 @@ end
         Return Value:
         True if within limits, false otherwise (bool)
         '''
-        raise NotImplementedError('Function Not yet implemented')
+    
+
+        if type(pose) is np.ndarray:
+            pose=pose.tolist()
+        
+        
+        prg = '''def ik_has_solution():
+has_solution = is_within_safety_limits(p{pose})
+write_output_boolean_register(2, has_solution)
+end
+ik_has_solution()
+'''
+                
+        programString = prg.format(**locals())
+        self.robotConnector.RealTimeClient.Send(programString)
+        
+        time.sleep(0.1) # wait some time for computing inverse kinematics in the UR3 Controller
+        
+        has_solution = self.robotConnector.RobotModel.OutputBitRegister()[2]
+        
+        # print("IK has solution:", has_solution)
+
+        return has_solution
     
     def popup(self, s, title='Popup', warning=False, error =False):
         '''

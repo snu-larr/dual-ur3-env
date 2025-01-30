@@ -202,7 +202,9 @@ class RobotModel(object):
     def ActualTCPPose(self):return self.dataDir['actual_TCP_pose']
     def RobotModee(self):raise NotImplementedError('Function Not yet implemented')
     def SafetyMode(self):raise NotImplementedError('Function Not yet implemented')
-    def TargetQ(self):raise NotImplementedError('Function Not yet implemented')
+    # dscho mod (debug)
+    def TargetQ(self):return self.dataDir['target_q']
+    # def TargetQ(self):raise NotImplementedError('Function Not yet implemented')
     def TargetQD(self):raise NotImplementedError('Function Not yet implemented')
     def TargetQDD(self):raise NotImplementedError('Function Not yet implemented')
     def TargetCurrent(self):raise NotImplementedError('Function Not yet implemented')

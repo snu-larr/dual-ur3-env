@@ -84,12 +84,15 @@ class UR3RealEnv(gym_custom.Env):
 
         start = time.time()
         self.run_before_rate_sleep_return = self._run_before_rate_sleep_func() # run _run_before_rate_sleep_func
-        # print(f'run before rate sleep (maybe update network) : {time.time()-start}')
+        
 
         self._episode_run_before_sleep_time += (time.time()-start)
         self._episode_run_before_sleep_time_avg = self._episode_run_before_sleep_time / self._episode_step
 
+        # print(f'run before rate sleep (maybe update network) : {time.time()-start} episode run bef sleep time : {self._episode_run_before_sleep_time} epi step : {self._episode_step}')
+
         lag_occurred = self.rate.sleep()
+        # print(f'lag : {lag_occurred}')
         self.run_before_rate_sleep() # clear _run_before_rate_sleep_func
 
         ob = self._get_obs()
@@ -97,8 +100,9 @@ class UR3RealEnv(gym_custom.Env):
 
         reward = 1.0
         done = False
-        if lag_occurred:
-            warnings.warn('Desired rate of %dHz is not satisfied! (current rate: %dHz)'%(self.rate._freq, 1/(self.rate._actual_cycle_time) ))
+        if lag_occurred:  
+            print('Desired rate of %dHz is not satisfied! (current rate: %dHz)'%(self.rate._freq, 1/(self.rate._actual_cycle_time)))          
+            # warnings.warn('Desired rate of %dHz is not satisfied! (current rate: %dHz)'%(self.rate._freq, 1/(self.rate._actual_cycle_time) ))
         controller_error = lambda status: (status.safety.StoppedDueToSafety) or (not status.robot.PowerOn)
         if controller_error(self.interface.get_controller_status()):
             done_info = self._recover_from_controller_error()
@@ -551,12 +555,12 @@ def gripper_check(host_ip):
     from gym_custom.envs.real.ur.drivers import URBasic
 
     gripper_kwargs = {
-        'robot' : None,
-        'payload' : 0.85,
-        'speed' : 255, # 0~255
-        'force' : 255,  # 0~255
-        'socket_host' : host_ip,
-        'socket_name' : 'gripper_socket'
+        # 'robot' : None,
+        # 'payload' : 0.85,
+        # 'speed' : 255, # 0~255
+        # 'force' : 255,  # 0~255
+        # 'socket_host' : host_ip,
+        # 'socket_name' : 'gripper_socket'
     }
     robotModel = URBasic.robotModel.RobotModel()
     robot = URBasic.urScriptExt.UrScriptExt(host=host_ip, robotModel=robotModel, **gripper_kwargs)
@@ -574,8 +578,8 @@ def gripper_check(host_ip):
         print('tool analog input0 : ', robotModel.ToolAnalogInput0())
         print('tool analog input1 : ', robotModel.ToolAnalogInput1())
         
-
-    option=2
+    print_register()
+    option=1
     if option==1: #jgkim ver
         # close-open-close-open gripper
         print('closing gripper')
@@ -652,7 +656,7 @@ def simple_gripper_example(host_ip, rate):
 
 if __name__ == "__main__":
     # sanity_check(host_ip='192.168.5.101')
-    # gripper_check(host_ip='192.168.5.101')
-    servoj_speedj_example(host_ip='192.168.5.101', rate=25)
+    gripper_check(host_ip='192.168.5.102')
+    # servoj_speedj_example(host_ip='192.168.5.101', rate=25)
     # simple_gripper_example(host_ip='192.168.5.101', rate=25)
     pass

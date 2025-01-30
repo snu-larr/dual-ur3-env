@@ -43,6 +43,7 @@ class ConnectionState:
     STARTED = 4
 
 
+
 class DashBoard(threading.Thread): 
     '''
     A Universal Robot can be controlled from remote by sending simple commands to the 
@@ -425,7 +426,8 @@ class DashBoard(threading.Thread):
                     self.last_respond = msg
 
                 with self.__dataEvent:
-                    self.__dataEvent.notifyAll()
+                    # self.__dataEvent.notifyAll()
+                    self.__dataEvent.notify_all() # for python 3.10
                 t0 = time.time()
                 self.__conn_state = ConnectionState.STARTED
 
@@ -448,7 +450,8 @@ class DashBoard(threading.Thread):
 
         self.__conn_state = ConnectionState.PAUSED
         with self.__dataEvent:
-            self.__dataEvent.notifyAll()
+            # self.__dataEvent.notifyAll()
+            self.__dataEvent.notify_all() # for python 3.10
         self._logger.info("Dashboard server interface is stopped")
 
     def wait_dbs(self):

@@ -76,6 +76,8 @@ class SO3Constraint(NullObjectiveBase):
     def setSO3_des(self, SO3):
         if SO3 is None:
             self.SO3_des = np.eye(3)
+        elif not isinstance(SO3, str):
+            self.SO3_des = SO3
         elif SO3 == 'vertical_side':
             self.SO3_des = np.array([[1,0,0], [0,-1,0], [0,0,-1]]) 
             # self.SO3_des = np.array([[-1,0,0], [0,1,0], [0,0,-1]]) 
@@ -93,10 +95,22 @@ class SO3Constraint(NullObjectiveBase):
             self.SO3_des = np.array([[0,0,-1], [1,0,0], [0,-1,0]])
         elif SO3 == 'horizontal_left_front':
             self.SO3_des = np.array([[0,0,1], [-1,0,0], [0,-1,0]])
-        elif not isinstance(SO3, str):
-            self.SO3_des = SO3
+        
         elif isinstance(SO3, str):
             raise NotImplementedError
+
+class SO3ConstraintRotateZ180(NullObjectiveBase):
+    
+    def __init__(self, SO3=None):
+        self.SO3_des = SO3
+        self.rotate_z_180 = np.array([[-1,0,0], [0,-1,0], [0,0,1]])
+
+    def evaluate(self, SO3):
+        SO3_rotate_z_180 = SO3 @ self.rotate_z_180
+        so3_err = 0.5*( 3 - np.trace(np.matmul(SO3, np.linalg.inv(self.SO3_des))) )
+        so3_rotate_z_180_err = 0.5*( 3 - np.trace(np.matmul(SO3_rotate_z_180, np.linalg.inv(self.SO3_des))) )
+        return min(so3_err, so3_rotate_z_180_err)
+        
 
 class URScriptWrapper(ActionWrapper):
     '''

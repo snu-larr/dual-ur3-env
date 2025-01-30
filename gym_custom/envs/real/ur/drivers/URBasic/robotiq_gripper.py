@@ -5,6 +5,7 @@ import threading
 import time
 from enum import Enum
 from collections import OrderedDict
+import asyncio
 
 class RobotiqGripper:
     """
@@ -51,6 +52,9 @@ class RobotiqGripper:
         self._min_force = 0
         self._max_force = 255
 
+        # jslee mod
+        self.position_socket = None
+
     # def connect(self, hostname: str, port: int, socket_timeout: float = 2.0) -> None:
     def connect(self, hostname, port, socket_timeout=2.0):
         """Connects to a gripper at the given address.
@@ -62,10 +66,19 @@ class RobotiqGripper:
         self.socket.connect((hostname, port))
         self.socket.settimeout(socket_timeout)
 
+        # jslee mod
+        self.position_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.position_socket.connect((hostname, port))
+        self.position_socket.settimeout(socket_timeout)
+
     # def disconnect(self) -> None:
     def disconnect(self):
         """Closes the connection with the gripper."""
         self.socket.close()
+
+        # jslee mod
+        if self.position_socket:
+            self.position_socket.close()
 
     # def _set_vars(self, var_dict: OrderedDict[str, Union[int, float]]):
     def _set_vars(self, var_dict):
@@ -96,28 +109,41 @@ class RobotiqGripper:
         """
         return self._set_vars(OrderedDict([(variable, value)]))
 
-    # def _get_var(self, variable: str):
-    def _get_var(self, variable):
-        """Sends the appropriate command to retrieve the value of a variable from the gripper, blocking until the
-        response is received or the socket times out.
-        :param variable: Name of the variable to retrieve.
-        :return: Value of the variable as integer.
-        """
-        # atomic commands send/rcv
-        with self.command_lock:
-            # cmd = f"GET {variable}\n"
-            cmd = "GET {}\n".format(variable) # for compatibility with lower versions of python
-            self.socket.sendall(cmd.encode(self.ENCODING))
-            data = self.socket.recv(1024)
+    # # def _get_var(self, variable: str):
+    # def _get_var(self, variable):
+    #     """Sends the appropriate command to retrieve the value of a variable from the gripper, blocking until the
+    #     response is received or the socket times out.
+    #     :param variable: Name of the variable to retrieve.
+    #     :return: Value of the variable as integer.
+    #     """
+    #     # atomic commands send/rcv
+    #     with self.command_lock:
+    #         # cmd = f"GET {variable}\n"
+    #         cmd = "GET {}\n".format(variable) # for compatibility with lower versions of python
+    #         self.socket.sendall(cmd.encode(self.ENCODING))
+    #         data = self.socket.recv(1024)
 
-        # expect data of the form 'VAR x', where VAR is an echo of the variable name, and X the value
-        # note some special variables (like FLT) may send 2 bytes, instead of an integer. We assume integer here
+    #     # expect data of the form 'VAR x', where VAR is an echo of the variable name, and X the value
+    #     # note some special variables (like FLT) may send 2 bytes, instead of an integer. We assume integer here
+    #     var_name, value_str = data.decode(self.ENCODING).split()
+    #     if var_name != variable:
+    #         # raise ValueError(f"Unexpected response {data} ({data.decode(self.ENCODING)}): does not match '{variable}'")
+    #         raise ValueError("Unexpected response {} ({}): does not match '{}'".format(data, data.decode(self.ENCODING), variable)) # for compatibility with lower versions of python
+    #     value = int(value_str)
+    #     return value
+
+    # jslee mod
+    def _get_var(self, variable, use_position_socket=False):
+        """Sends the appropriate command to retrieve the value of a variable from the response is received or the socket times out."""
+        cmd = "GET {}\n".format(variable)
+        socket_to_use = self.position_socket if use_position_socket else self.socket
+        with self.command_lock:
+            socket_to_use.sendall(cmd.encode(self.ENCODING))
+            data = socket_to_use.recv(1024)
         var_name, value_str = data.decode(self.ENCODING).split()
         if var_name != variable:
-            # raise ValueError(f"Unexpected response {data} ({data.decode(self.ENCODING)}): does not match '{variable}'")
-            raise ValueError("Unexpected response {} ({}): does not match '{}'".format(data, data.decode(self.ENCODING), variable)) # for compatibility with lower versions of python
-        value = int(value_str)
-        return value
+            raise ValueError("Unexpected response {} ({}) : does not match '{}'".format(data, data.decode(self.ENCODING), variable))
+        return int(value_str)
 
     @staticmethod
     # def _is_ack(data: str):
@@ -226,10 +252,14 @@ class RobotiqGripper:
         """Returns whether the current position is considered as being fully closed."""
         return self.get_current_position() >= self.get_closed_position()
 
-    # def get_current_position(self) -> int:
+    # # def get_current_position(self) -> int:
+    # def get_current_position(self):
+    #     """Returns the current position as returned by the physical hardware."""
+    #     return self._get_var(self.POS)
+
+    # jslee mod
     def get_current_position(self):
-        """Returns the current position as returned by the physical hardware."""
-        return self._get_var(self.POS)
+        return self._get_var(self.POS, use_position_socket=True)
 
     # def auto_calibrate(self, log: bool = True) -> None:
     def auto_calibrate(self, log=True):

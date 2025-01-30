@@ -74,7 +74,7 @@ class RealTimeClient(object):
         self.__robotModel = robotModel
 
         logger = URBasic.dataLogging.DataLogging()
-        name = logger.AddEventLogging(__name__, log2Consol=False,level = URBasic.logging.INFO)        
+        name = logger.AddEventLogging(__name__, log2Consol=False,level = URBasic.logging.ERROR) # dscho mod to ERROR from INFO temporarily
         self.__logger = logger.__dict__[name]
         self.__robotModel.rtcConnectionState = ConnectionState.DISCONNECTED
         self.__reconnectTimeout = 60
@@ -211,7 +211,7 @@ class RealTimeClient(object):
             if not self.__connect():
                 self.__logger.error('SendProgram: Not connected to robot')
         if self.__robotModel.stopRunningFlag:
-            self.__logger.info('SendProgram: Send command aborted due to stopRunningFlag')
+            self.__logger.info('SendProgram: Send command aborted due to stopRunningFlag')            
             return
     
         #Rest status bits
@@ -221,6 +221,7 @@ class RealTimeClient(object):
         #Send
         self.__sendPrg(prg)      
         self.__robotModel.rtcProgramRunning = False
+        
 
     def __AddStatusBit2Prog(self,prg):
         '''
@@ -241,7 +242,6 @@ class RealTimeClient(object):
             else:
                 mainPrgEnd = prg.rfind('end')
                 prg = prg.replace(prg[0:mainPrgEnd], prg[0:mainPrgEnd] + '\n  write_output_boolean_register(1, True)\n',1)
-                
         else:
             prg = 'def script():\n  write_output_boolean_register(0, True)\n  ' + prg + '\n  write_output_boolean_register(1, True)\nend\n'
         return prg
@@ -250,6 +250,7 @@ class RealTimeClient(object):
         '''
         Sending program str via socket
         '''
+
         programSend = False      
         self.__robotModel.forceRemoteActiveFlag = False
         while not self.__robotModel.stopRunningFlag and not programSend:

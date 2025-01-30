@@ -53,19 +53,25 @@ class ROSRate(object):
 
         if actual_end < self._start: # detect backward jumps in time
             expected_end = actual_end + 1/self._freq
+            # print(f'backward jump occur! actual : {actual_end}, start : {self._start}')
 
+        
         # calculate sleep time
         sleep_duration = expected_end - actual_end
         # set the actual amount of time the loop took in case the user wants to know
         self._actual_cycle_time = actual_end - self._start
+
+        # print(f'start : {self._start} actual : {actual_end} expected : {expected_end} sleep duration : {sleep_duration}, act cycle : {self._actual_cycle_time}')
 
         # reset start time
         self._start = expected_end
 
         if sleep_duration <= 0:
             # if we've jumped forward in time, or the loop has taken more than a full extra cycle, reset our cycle
+            # print(f'sleep duration is negative')
             if actual_end > expected_end + 1/self._freq:
                 self._start = actual_end
+                # print(f'adjust self._start when sleep duration is negative')
             return True
 
         return time.sleep(sleep_duration)

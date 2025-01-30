@@ -104,11 +104,20 @@ class URScriptInterface(object):
         if type(q) == np.ndarray: q = q.tolist()
         self.comm.movej(q=q, a=a, v=v, t=t, r=r, wait=wait, pose=pose)
 
-    def movel(self, *args, **kwargs):
-        raise NotImplementedError()
+    def movel(self, pose=None, a=1.2, v =0.25, t= 0, r =0, wait=True):
+        self.comm.movel(pose=pose, a=a, v=v, t=t, r=r, wait=wait)
 
-    def movep(self, *args, **kwargs):
-        raise NotImplementedError()
+    def movep(self, pose=None, a=1.2, v =0.25, r =0, wait=True):
+        self.comm.movep(pose=pose, a=a, v=v, r=r, wait=wait)
+    
+    def get_inverse_kin(self, x, qnear=None, maxPositionError =0.0001, maxOrientationError =0.0001, wait=True):
+        return self.comm.get_inverse_kin(x, qnear, maxPositionError, maxOrientationError, wait=wait)
+    
+    def is_within_safety_limits(self, x):
+        return self.comm.is_within_safety_limits(x)
+    
+    def get_actual_tcp_pose(self, wait=True):
+        return self.comm.get_actual_tcp_pose(wait=wait)
 
     def movec(self, *args, **kwargs):
         raise NotImplementedError()
@@ -176,6 +185,9 @@ class URScriptInterface(object):
     def move_gripper_position(self, g, wait=True):
         if type(g) == np.ndarray:
             g = g[0] # dscho mod (it should be scalar, not np.ndarray)
+        # jslee mod
+        wait=False
+
         self.comm.move_gripper_position(g, wait)
 
     def move_gripper_velocity(self, gd):

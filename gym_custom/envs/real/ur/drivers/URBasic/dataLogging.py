@@ -68,8 +68,9 @@ class DataLogging(with_metaclass(Singleton, object)):
 
         self.fileLogHandler = logging.FileHandler(os.path.join(self.directory, 'UrEvent.log'), mode=self.__eventLogFileMode)
         self.fileLogHandler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-        self.streamLogHandler = logging.StreamHandler()
-        self.streamLogHandler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        # dscho commented temporarily
+        # self.streamLogHandler = logging.StreamHandler()
+        # self.streamLogHandler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         self.fileDataLogHandler = logging.FileHandler(os.path.join(self.directory, 'UrDataLog.csv'), mode=self.__dataLogFileMode)
         self.writeDataLogHeadder = True
 
@@ -122,7 +123,7 @@ class DataLogging(with_metaclass(Singleton, object)):
                 os.makedirs(self.directory)
         return self.directory, self.logDir
 
-    def AddEventLogging(self, name='root', log2file=True, log2Consol=True, level = logging.INFO):
+    def AddEventLogging(self, name='root', log2file=False, log2Consol=True, level = logging.ERROR): # dscho mod log2file as False, logging as ERROR from INFO temporarily
         '''
         Add a new event logger, the event logger can log data to a file and also output the log to the console.
 
@@ -138,8 +139,8 @@ class DataLogging(with_metaclass(Singleton, object)):
         self.__dict__[name] = logging.getLogger(name)
         if log2file:
             self.__dict__[name].addHandler(self.fileLogHandler)
-        if log2Consol:
-            self.__dict__[name].addHandler(self.streamLogHandler)
+        # if log2Consol:
+        #     self.__dict__[name].addHandler(self.streamLogHandler)
         self.__dict__[name].setLevel(level)
         return name
 
@@ -156,7 +157,8 @@ class DataLogging(with_metaclass(Singleton, object)):
         name = name+'Data'
         self.__dict__[name] = logging.getLogger(name)
         self.__dict__[name].addHandler(self.fileDataLogHandler)
-        self.__dict__[name].setLevel(logging.INFO)
+        # self.__dict__[name].setLevel(logging.INFO)
+        self.__dict__[name].setLevel(logging.ERROR)
         if self.writeDataLogHeadder:
             self.__dict__[name].info('Time;ModuleName;Level;Channel;UR_Time;Value1;Value2;Value3;Value4;Value5;Value6')
             self.fileDataLogHandler.setFormatter(logging.Formatter('%(asctime)s;%(name)s;%(levelname)s;%(message)s'))

@@ -3,7 +3,7 @@
 <!-- Universal Robots do not support more than 96 values in recieve or send config at one time  -->
 <rtde_config>
     <receive key="out">
-        <!--<field name="target_q" type="VECTOR6D"/>-->
+        <field name="target_q" type="VECTOR6D"/>
         <!--<field name="target_qd" type="VECTOR6D"/>-->
         <!--<field name="target_qdd" type="VECTOR6D"/>-->
         <!--<field name="target_current" type="VECTOR6D"/>-->
@@ -54,7 +54,7 @@
         <!--<field name="tcp_force_scalar" type="DOUBLE"/>-->
         
         <field name="output_bit_registers0_to_31" type="UINT32"/>
-        <!--<field name="output_bit_registers32_to_63" type="UINT32"/>-->
+        <field name="output_bit_registers32_to_63" type="UINT32"/>
         
         <field name="output_int_register_0" type="INT32"/>
         <field name="output_int_register_1" type="INT32"/> <!-- originally, 여기까지만 사용-->
