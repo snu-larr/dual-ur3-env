@@ -745,12 +745,21 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                                      'peg_backward' : np.array([0.316, 0.11, 0.9]),
                                      'covering_forward' : np.array([0.394, 0.29, 0.78]),
                                      'covering_backward' : np.array([0.306, -0.04, 0.9]),
-                                     'image_pickandplace_forward' : np.array([-0.367, -0.05, 0.78]),
-                                     'image_pickandplace_backward' : np.array([[-0.281, 0.09,  0.78],
-                                                                               [-0.459, 0.09,  0.78],
-                                                                               [-0.278, -0.165,  0.78],
-                                                                               [-0.463, -0.162,  0.78]]),
-
+                                    #  # left arm
+                                    #  'image_pickandplace_forward' : np.array([-0.367, -0.05, 0.78]),
+                                    #  'image_pickandplace_backward' : np.array([[-0.281, 0.09,  0.78],
+                                    #                                            [-0.459, 0.09,  0.78],
+                                    #                                            [-0.278, -0.165,  0.78],
+                                    #                                            [-0.463, -0.162,  0.78]]),
+                                     
+                                     # right arm (for 3D RL)
+                                     'image_pickandplace_forward' : np.array([0.328, -0.057, 0.79]),
+                                     'image_pickandplace_backward' : np.array([[0.26, -0.185,  0.79],
+                                                                               [0.41, -0.185,  0.79],
+                                                                               [0.26, 0.085,  0.79],
+                                                                               [0.41, 0.085,  0.79]]),
+                                    
+                                     
                                      }
 
         self.previous_ee_pos = None
@@ -853,7 +862,11 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                 
                 # 241106 (after rearrangement of robots in ASRI)
                 # init ee pos : [-0.35,  -0.02,  0.9]
-                self.set_initial_joint_pos(np.array([-0.2740143,  -1.46871597,  1.41530895 , -1.53634483 , -1.55199987, -1.80799324])) # left arm
+                # self.set_initial_joint_pos(np.array([-0.2740143,  -1.46871597,  1.41530895 , -1.53634483 , -1.55199987, -1.80799324])) # left arm
+
+                # 250130 for 3D RL
+                # init ee pos : [0.264,  -0.042,  0.94]
+                self.set_initial_joint_pos(np.array([2.50760031, -1.82805998,  1.57793283, -1.35876352, -1.5192073,  -2.23440582])) # right arm
             else:
                 # upright
                 # init ee pos : [ 0.06188416 -0.34819109  0.83701621]
@@ -861,7 +874,11 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                 
                 # 241106 (after rearrangement of robots in ASRI)
                 # init ee pos : [-0.35,  -0.02,  0.9]
-                self.set_initial_joint_pos(np.array([-0.2740143,  -1.46871597,  1.41530895 , -1.53634483 , -1.55199987, -1.80799324])) # left arm
+                # self.set_initial_joint_pos(np.array([-0.2740143,  -1.46871597,  1.41530895 , -1.53634483 , -1.55199987, -1.80799324])) # left arm
+
+                # 250130 for 3D RL
+                # init ee pos : [0.264,  -0.042,  0.94]
+                self.set_initial_joint_pos(np.array([2.50760031, -1.82805998,  1.57793283, -1.35876352, -1.5192073,  -2.23440582])) # right arm
 
             self.set_initial_gripper_pos(np.array([0]))
         elif self.task == 'moka':
@@ -1670,7 +1687,7 @@ class DSCHOSingleUR3CoveringRealEnv(DSCHOSingleUR3GoalRealEnv):
 class DSCHOSingleUR3ImagePickAndPlaceRealEnv(DSCHOSingleUR3GoalRealEnv):
     def __init__(self, *args, **kwargs):
         # assert kwargs.get('so3_constraint')=='vertical_front-180'
-        assert kwargs.get('so3_constraint')=='vertical_side-180'
+        # assert kwargs.get('so3_constraint')=='vertical_side-180'
         # since 
         super().__init__(has_object=False, block_gripper=False, task='image_pickandplace', *args, **kwargs)
 
@@ -2233,10 +2250,10 @@ def test_single_ur3_real_se3_calibration():
     #     time.sleep(0.1)
     
 def test_single_ur3_real_se3_calibration_dscho_custom():
-    task='peg'
+    # task='peg'
     # task='sweep'
     # task='covering'
-    # task='image_pickandplace'
+    task='image_pickandplace'
     # task='moka'
 
     if task=='peg':
@@ -2283,7 +2300,8 @@ def test_single_ur3_real_se3_calibration_dscho_custom():
                            })
         env = DSCHOSingleUR3CoveringRealEnv(**env_kwargs)
     elif task=='image_pickandplace':
-        host_ip_left = '192.168.5.101'
+        # host_ip_left = '192.168.5.101'
+        host_ip_left = '192.168.5.102'
         env_kwargs.update({'host_ip' : host_ip_left})
         env = DSCHOSingleUR3ImagePickAndPlaceRealEnv(**env_kwargs)
     elif task=='moka':
@@ -2338,9 +2356,9 @@ def zed_camera_streaming():
     # serial_2 = cameras[1].serial_number
     # print(serial_1, serial_2)
     
-    serial_1 = 13426 # camera 1
-    serial_2 = 26236181 # camera 2
-    init_params.set_from_serial_number(serial_2)
+    # serial_1 = 13426 # camera 1
+    # serial_2 = 26236181 # camera 2
+    # init_params.set_from_serial_number(serial_2)
 
 
 
@@ -2501,8 +2519,8 @@ if __name__ == "__main__":
     # test_single_ur3_real_peg()
     # test_single_ur3_real_sweep()
     # test_single_ur3_real_se3_calibration()
-    # test_single_ur3_real_se3_calibration_dscho_custom()
+    test_single_ur3_real_se3_calibration_dscho_custom()
     # zed_camera_streaming()
     # zed_image_pixel_difference_test()
-    ur3_urscript_inverse_kinematics_test()
+    # ur3_urscript_inverse_kinematics_test()
     
