@@ -3868,8 +3868,8 @@ def dscho_mocap_single_ur3_for_ARL_test(env_type='sim', render=False, make_video
     
     
     # dscho added for ARL
-    # env_id = 'dscho-single-ur3-mocap-peg-v1'
-    env_id = 'dscho-single-ur3-mocap-sweep-v1'
+    env_id = 'dscho-single-ur3-mocap-peg-v1'
+    # env_id = 'dscho-single-ur3-mocap-sweep-v1'
     
     # make_video = False
     which_hand = 'right'
@@ -3888,7 +3888,7 @@ def dscho_mocap_single_ur3_for_ARL_test(env_type='sim', render=False, make_video
         so3_constraint='vertical_front'
     else:
         raise NotImplementedError
-    reset_at_goal = False # True
+    reset_at_goal = False #  True
     env_kwargs.update(dict(initMode = None, 
                         sparse_reward = True, 
                         which_hand=which_hand,
@@ -3943,7 +3943,7 @@ def dscho_mocap_single_ur3_for_ARL_test(env_type='sim', render=False, make_video
         env = VideoWrapper(env, base_path=cur_vid_dir, base_name=full_vid_name, ur3_cam=ur3_cam, custom_env = custom_env)
 
 
-    duration = 1 #2 # in seconds
+    duration = 2 # in seconds
     single = True
     action_scale = 30 # 빠르게 움직이고 싶으면 action downscale or action scale조절(NOTE : action scale은 원래 학습의 영역임)
     grip_scale = 1
@@ -3973,7 +3973,7 @@ def dscho_mocap_single_ur3_for_ARL_test(env_type='sim', render=False, make_video
         
         grip_pos, object_pos, object_rel_pos, gripper_state, object_rot, object_velp, object_velr, grip_velp, gripper_vel, _ = np.split(obs['observation'], [3, 6, 9, 11, 14, 17, 20, 23, 25], axis=-1)
         
-        print('reset, o pos : {} o rot : {} '.format(object_pos, object_rot))
+        print('reset, o pos : {} o rot : {} d goal : {}'.format(object_pos, object_rot, desired_goal))
         
                 
         obs_list =[]
@@ -4080,7 +4080,7 @@ if __name__ == '__main__':
     # speedj_and_forceg(env_type='real', render=False)
     # pick_and_place(env_type='real', render=False)
     # collide(env_type='sim', render=True)
-    fidget_in_place(env_type='real', render=False)
+    # fidget_in_place(env_type='real', render=False)
 
     # 2.2 Deprecated UR wrapper examples 
     # servoj_and_forceg_deprecated()
