@@ -124,7 +124,8 @@ class EndEffectorPositionControlSingleWrapperReal(object): #URScriptWrapper_Dual
         if self.env.task=='covering' and self.env._episode_step is not None:
             # to prevent collision with object
             for _ in range(10):
-                self.step(np.array([0.0, 0, 1,0])) # move to z direction
+                # self.step(np.array([0.0, 0, 1,0])) # move to z direction
+                self.step(np.array([0.0, 0, 1,-1.0])) # 250201 for 3D RL
         elif self.env.task=='peg' and self.env._episode_step is not None:
             # to prevent collision with object
             for _ in range(10):
@@ -633,7 +634,9 @@ class DSCHOUR3RealEnv(UR3RealEnv):
         else:
             return p
 
-
+    def get_gripper_pos(self):
+        return self.interface.get_gripper_position()
+    
     # state_goal should be defined in child class
     def get_current_goal(self):
         return self._state_goal.copy()
@@ -743,8 +746,8 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                                      # 241106 (after rearrangement of robots in ASRI)(not yet implemented)
                                      'peg_forward' : np.array([0.321, 0.37, 0.899]),
                                      'peg_backward' : np.array([0.316, 0.11, 0.9]),
-                                     'covering_forward' : np.array([0.394, 0.29, 0.78]),
-                                     'covering_backward' : np.array([0.306, -0.04, 0.9]),
+                                    #  'covering_forward' : np.array([0.394, 0.29, 0.78]),
+                                    #  'covering_backward' : np.array([0.306, -0.04, 0.9]),
                                     #  # left arm
                                     #  'image_pickandplace_forward' : np.array([-0.367, -0.05, 0.78]),
                                     #  'image_pickandplace_backward' : np.array([[-0.281, 0.09,  0.78],
@@ -758,7 +761,12 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                                                                                [0.41, -0.185,  0.79],
                                                                                [0.26, 0.085,  0.79],
                                                                                [0.41, 0.085,  0.79]]),
-                                    
+                                     'covering_forward' : np.array([0.328, 0.1, 0.78]),
+                                     'covering_backward' : np.array([0.328, -0.1, 0.9]),
+                                     
+                                     # dummy
+                                     'pot_lid_forward' : np.array([0.328, 0.1, 0.78]),
+                                     'pot_lid_backward' : np.array([0.328, -0.1, 0.9]),
                                      
                                      }
 
@@ -846,11 +854,17 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                 
                 # init ee pos : [0.306,  -0.04,  0.97]                
                 self.set_initial_joint_pos(np.array([2.62560749, -1.56763441, 1.19621611, -1.2121237, -1.55632431, -0.48850662])) # right arm
+        
+        elif self.task == 'pot_lid':
+            if self.reset_at_goal:
+                # 241106 (after rearrangement of robots in ASRI)
+                # init ee pos : [0.394,  0.29,  0.78]
+                self.set_initial_joint_pos(np.array([ 3.54779124, -0.81062395,  1.08774757, -1.94419986, -1.57904655,  0.42889708])) # right arm                
+            else:
+                # init ee pos : [0.306,  -0.04,  0.97]                
+                self.set_initial_joint_pos(np.array([2.62560749, -1.56763441, 1.19621611, -1.2121237, -1.55632431, -0.48850662])) # right arm
                 
-                
-
-
-            self.set_initial_gripper_pos(np.array([255]))
+            self.set_initial_gripper_pos(np.array([0])) 
 
         elif self.task == 'arl_push':
             raise NotImplementedError
@@ -968,6 +982,8 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                 goal = self.predefined_goal_dict['sweep_backward']
             elif self.task in ['covering']:
                 goal = self.predefined_goal_dict['covering_backward']
+            elif self.task in ['pot_lid']:
+                goal = self.predefined_goal_dict['pot_lid_backward']
             elif self.task in ['image_pickandplace']:
                 goals = self.predefined_goal_dict['image_pickandplace_backward']
                 goal = goals[np.random.randint(goals.shape[0])]
@@ -983,6 +999,8 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
                     goal = goals[np.random.randint(goals.shape[0])]
                 elif self.task in ['covering']:
                     goal = self.predefined_goal_dict['covering_forward']
+                elif self.task in ['pot_lid']:
+                    goal = self.predefined_goal_dict['pot_lid_forward']
                 elif self.task in ['image_pickandplace']:
                     goal = self.predefined_goal_dict['image_pickandplace_forward']
                 elif self.task in ['moka']:
@@ -1254,7 +1272,7 @@ class DSCHOSingleUR3GoalRealEnv(DSCHOUR3RealEnv):
             else:    
                 reward = -placingDist
             return reward
-        elif self.task in ['sweep', 'covering', 'image_pickandplace']:
+        elif self.task in ['sweep', 'covering', 'pot_lid', 'image_pickandplace']:
             placingDist = np.linalg.norm(achieved_goal[-3:] - desired_goal[-3:])
             if self.sparse_reward:
                 if placingDist < self.distance_threshold:
@@ -1681,7 +1699,14 @@ class DSCHOSingleUR3CoveringRealEnv(DSCHOSingleUR3GoalRealEnv):
     def __init__(self, *args, **kwargs):
         # assert kwargs.get('so3_constraint')=='vertical_front-180'
         assert kwargs.get('so3_constraint')=='vertical_front-180'
-        super().__init__(has_object=False, block_gripper=True, task='covering', *args, **kwargs)
+        # super().__init__(has_object=False, block_gripper=True, task='covering', *args, **kwargs)
+        super().__init__(has_object=False, block_gripper=False, task='covering', *args, **kwargs) # 250201 for 3D RL (right arm)
+
+
+class DSCHOSingleUR33DRLRealEnv(DSCHOSingleUR3GoalRealEnv):
+    def __init__(self, task=None, *args, **kwargs):
+        assert kwargs.get('so3_constraint')=='vertical_front-180'
+        super().__init__(has_object=False, block_gripper=False, task=task, *args, **kwargs) # 250313 for 3D RL (right arm)
 
 
 class DSCHOSingleUR3ImagePickAndPlaceRealEnv(DSCHOSingleUR3GoalRealEnv):
@@ -2265,7 +2290,8 @@ def test_single_ur3_real_se3_calibration_dscho_custom():
         rotation_z = False
         observation_type='ee_object_pos_w_grip_custom_vel'
     elif task in ['sweep','image_pickandplace']:
-        so3_constraint ='vertical_side-180'
+        # so3_constraint ='vertical_side-180' # left arm
+        so3_constraint ='vertical_side' # right arm
         rotation_z = False
         observation_type='ee_object_pos_w_grip_custom_vel'
     elif task in ['moka']:
@@ -2319,11 +2345,11 @@ def test_single_ur3_real_se3_calibration_dscho_custom():
 
     print(f"endeff pos: {env.get_endeff_pos(arm='right')}")
     
-    # for i in range(100):
-    #     env.step(np.array([0,0,0,1]))
+    for i in range(10):
+        env.step(np.array([0,0,0,1]))
 
-    # obs = env.reset()
-    # print('reset, obs : {}'.format(obs))
+    obs = env.reset()
+    print('reset, obs : {}'.format(obs))
     
     # import numpy as np
     # from scipy.spatial.transform import Rotation as R

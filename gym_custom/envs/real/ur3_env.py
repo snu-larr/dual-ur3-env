@@ -46,7 +46,8 @@ class UR3RealEnv(gym_custom.Env):
 
     def set_initial_joint_pos(self, q=None):
         if q is None: pass
-        elif q == 'current': self._init_qpos = self.interface.get_joint_positions()
+        elif isinstance(q, str) and q == 'current': 
+            self._init_qpos = self.interface.get_joint_positions()
         else:
             assert q.shape[0] == 6
             self._init_qpos = q

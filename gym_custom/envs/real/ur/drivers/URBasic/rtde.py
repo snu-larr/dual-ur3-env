@@ -35,7 +35,7 @@ import xml.etree.ElementTree as ET
 import time
 import os.path
 
-DEFAULT_TIMEOUT = 1.0
+DEFAULT_TIMEOUT = 10.0 # 1.0
 
 class Command:
     RTDE_REQUEST_PROTOCOL_VERSION = 86        # ascii V
@@ -396,69 +396,153 @@ class RTDE(threading.Thread): #, metaclass=Singleton
             self._logger.info("RTDE disconnected")
             self.__disconnect()
             return False
-
+    
+    # dscho mod (by chatgpt-o3), Not sure whether it works correctly.. 
     def __receive(self):
         byte_buffer = bytes()
 
+        # 데이터 수신: 타임아웃 내에 수신된 데이터를 버퍼에 추가
         (readable, _, _) = select.select([self.__sock], [], [], DEFAULT_TIMEOUT)
-        if (len(readable)):
+        if len(readable):
             more = self.__sock.recv(16384)
             if len(more) == 0:
                 self._logger.info("RTDE disconnected")
                 self.__disconnect()
                 return None
-            byte_buffer +=  more
+            byte_buffer += more
 
+        # 재동기화 로직을 포함한 패킷 파싱 루프
         while len(byte_buffer) >= 3:
-            (packet_size, packet_command) = struct.unpack_from('>HB', byte_buffer)
-            buffer_length = len(byte_buffer)
+            try:
+                # 헤더 읽기: 2바이트의 크기와 1바이트의 커맨드
+                packet_size, packet_command = struct.unpack_from('>HB', byte_buffer)
+            except struct.error:
+                # 헤더를 읽을 만큼 데이터가 부족하면 break
+                break
 
-            if ((buffer_length) >= packet_size):
-                packet, byte_buffer = byte_buffer[3:packet_size], byte_buffer[packet_size:]
-                data = self.__decodePayload(packet_command, packet)
+            # 최소 패킷 크기는 3바이트 이상이어야 함 (헤더만 포함해도 3바이트)
+            # 그리고 일반적으로 패킷 크기가 너무 크면 비정상으로 간주할 수 있음.
+            MIN_PACKET_SIZE = 3
+            MAX_PACKET_SIZE = 4096  # 필요에 따라 실제 최대 패킷 크기에 맞게 조정
+            if packet_size < MIN_PACKET_SIZE or packet_size > MAX_PACKET_SIZE:
+                self._logger.warning("Invalid packet_size %d detected, attempting to re-synchronize." % packet_size)
+                # 잘못된 헤더로 판단: 첫 바이트를 제거하고 다시 시도
+                byte_buffer = byte_buffer[1:]
+                continue
 
-                if(packet_command == Command.RTDE_GET_URCONTROL_VERSION):
-                    self.__verifyControllerVersion(data)
-                elif(packet_command == Command.RTDE_REQUEST_PROTOCOL_VERSION):
-                    self.__verifyProtocolVersion(data)
-                elif(packet_command == Command.RTDE_CONTROL_PACKAGE_SETUP_INPUTS):
-                    self.__rtde_input_config = data
-                    self.__rtde_input_config.names = self.__rtde_input_names
-                    #self.__rtde_input_config[self.__rtde_input_config.id] = self.__rtde_input_config
-                    self.__dataSend = RTDEDataObject.create_empty(self.__rtde_input_names, self.__rtde_input_config.id)
-                    if self.__rtde_input_initValues is not None:
-                        for ii in range(len(self.__rtde_input_config.names)):
-                            if 'UINT8' == self.__rtde_input_config.types[ii]:
-                                self.setData(self.__rtde_input_config.names[ii], int(self.__rtde_input_initValues[ii]))
-                            elif 'UINT32' == self.__rtde_input_config.types[ii]:
-                                self.setData(self.__rtde_input_config.names[ii], int(self.__rtde_input_initValues[ii]))
-                            elif 'INT32' == self.__rtde_input_config.types[ii]:
-                                self.setData(self.__rtde_input_config.names[ii], int(self.__rtde_input_initValues[ii]))
-                            elif 'DOUBLE' == self.__rtde_input_config.types[ii]:
-                                self.setData(self.__rtde_input_config.names[ii], (self.__rtde_input_initValues[ii]))
-                            else:
-                                self._logger.error('Unknown data type')
+            if len(byte_buffer) < packet_size:
+                # 아직 패킷이 완전히 도착하지 않았으므로, 더 기다림
+                break
 
-                elif(packet_command == Command.RTDE_CONTROL_PACKAGE_SETUP_OUTPUTS):
-                    self.__rtde_output_config = data
-                    self.__rtde_output_config.names = self.__rtde_output_names
-                elif(packet_command == Command.RTDE_CONTROL_PACKAGE_START):
-                    self._logger.info('RTDE started')
-                    self.__conn_state = ConnectionState.STARTED
-                elif(packet_command == Command.RTDE_CONTROL_PACKAGE_PAUSE):
-                    self._logger.info('RTDE paused')
-                    self.__conn_state = ConnectionState.PAUSED
-                elif(packet_command == Command.RTDE_DATA_PACKAGE):
-                    self.__updateModel(data)
-                elif(packet_command == 0):
-                    byte_buffer = bytes()
-            else:
-                print("skipping package - unexpected packet_size - length: " + str(len(byte_buffer)))
+            # 올바른 패킷이 수신된 경우: 헤더(3바이트) 이후의 패킷 내용을 추출
+            packet = byte_buffer[3:packet_size]
+            byte_buffer = byte_buffer[packet_size:]
+            data = self.__decodePayload(packet_command, packet)
+
+            # 패킷 처리 (원래 코드와 동일)
+            if packet_command == Command.RTDE_GET_URCONTROL_VERSION:
+                self.__verifyControllerVersion(data)
+            elif packet_command == Command.RTDE_REQUEST_PROTOCOL_VERSION:
+                self.__verifyProtocolVersion(data)
+            elif packet_command == Command.RTDE_CONTROL_PACKAGE_SETUP_INPUTS:
+                self.__rtde_input_config = data
+                self.__rtde_input_config.names = self.__rtde_input_names
+                self.__dataSend = RTDEDataObject.create_empty(self.__rtde_input_names, self.__rtde_input_config.id)
+                if self.__rtde_input_initValues is not None:
+                    for ii in range(len(self.__rtde_input_config.names)):
+                        if 'UINT8' == self.__rtde_input_config.types[ii]:
+                            self.setData(self.__rtde_input_config.names[ii], int(self.__rtde_input_initValues[ii]))
+                        elif 'UINT32' == self.__rtde_input_config.types[ii]:
+                            self.setData(self.__rtde_input_config.names[ii], int(self.__rtde_input_initValues[ii]))
+                        elif 'INT32' == self.__rtde_input_config.types[ii]:
+                            self.setData(self.__rtde_input_config.names[ii], int(self.__rtde_input_initValues[ii]))
+                        elif 'DOUBLE' == self.__rtde_input_config.types[ii]:
+                            self.setData(self.__rtde_input_config.names[ii], (self.__rtde_input_initValues[ii]))
+                        else:
+                            self._logger.error('Unknown data type')
+            elif packet_command == Command.RTDE_CONTROL_PACKAGE_SETUP_OUTPUTS:
+                self.__rtde_output_config = data
+                self.__rtde_output_config.names = self.__rtde_output_names
+            elif packet_command == Command.RTDE_CONTROL_PACKAGE_START:
+                self._logger.info('RTDE started')
+                self.__conn_state = ConnectionState.STARTED
+            elif packet_command == Command.RTDE_CONTROL_PACKAGE_PAUSE:
+                self._logger.info('RTDE paused')
+                self.__conn_state = ConnectionState.PAUSED
+            elif packet_command == Command.RTDE_DATA_PACKAGE:
+                self.__updateModel(data)
+            elif packet_command == 0:
+                # 특별한 패킷 커맨드가 0인 경우, 버퍼를 비움
                 byte_buffer = bytes()
+            else:
+                self._logger.warning("Unknown packet_command: %d" % packet_command)
 
         if len(byte_buffer) != 0:
-            self._logger.warning('skipping package - not a package but buffer was not empty')
-            byte_buffer = bytes()
+            self._logger.warning('Remaining data in buffer not forming a complete packet. Buffer length: %d' % len(byte_buffer))
+
+
+    # def __receive(self):
+    #     byte_buffer = bytes()
+
+    #     (readable, _, _) = select.select([self.__sock], [], [], DEFAULT_TIMEOUT)
+    #     if (len(readable)):
+    #         more = self.__sock.recv(16384)
+    #         if len(more) == 0:
+    #             self._logger.info("RTDE disconnected")
+    #             self.__disconnect()
+    #             return None
+    #         byte_buffer +=  more
+
+    #     while len(byte_buffer) >= 3:
+    #         (packet_size, packet_command) = struct.unpack_from('>HB', byte_buffer)
+    #         buffer_length = len(byte_buffer)
+
+    #         if ((buffer_length) >= packet_size):
+    #             packet, byte_buffer = byte_buffer[3:packet_size], byte_buffer[packet_size:]
+    #             data = self.__decodePayload(packet_command, packet)
+
+    #             if(packet_command == Command.RTDE_GET_URCONTROL_VERSION):
+    #                 self.__verifyControllerVersion(data)
+    #             elif(packet_command == Command.RTDE_REQUEST_PROTOCOL_VERSION):
+    #                 self.__verifyProtocolVersion(data)
+    #             elif(packet_command == Command.RTDE_CONTROL_PACKAGE_SETUP_INPUTS):
+    #                 self.__rtde_input_config = data
+    #                 self.__rtde_input_config.names = self.__rtde_input_names
+    #                 #self.__rtde_input_config[self.__rtde_input_config.id] = self.__rtde_input_config
+    #                 self.__dataSend = RTDEDataObject.create_empty(self.__rtde_input_names, self.__rtde_input_config.id)
+    #                 if self.__rtde_input_initValues is not None:
+    #                     for ii in range(len(self.__rtde_input_config.names)):
+    #                         if 'UINT8' == self.__rtde_input_config.types[ii]:
+    #                             self.setData(self.__rtde_input_config.names[ii], int(self.__rtde_input_initValues[ii]))
+    #                         elif 'UINT32' == self.__rtde_input_config.types[ii]:
+    #                             self.setData(self.__rtde_input_config.names[ii], int(self.__rtde_input_initValues[ii]))
+    #                         elif 'INT32' == self.__rtde_input_config.types[ii]:
+    #                             self.setData(self.__rtde_input_config.names[ii], int(self.__rtde_input_initValues[ii]))
+    #                         elif 'DOUBLE' == self.__rtde_input_config.types[ii]:
+    #                             self.setData(self.__rtde_input_config.names[ii], (self.__rtde_input_initValues[ii]))
+    #                         else:
+    #                             self._logger.error('Unknown data type')
+
+    #             elif(packet_command == Command.RTDE_CONTROL_PACKAGE_SETUP_OUTPUTS):
+    #                 self.__rtde_output_config = data
+    #                 self.__rtde_output_config.names = self.__rtde_output_names
+    #             elif(packet_command == Command.RTDE_CONTROL_PACKAGE_START):
+    #                 self._logger.info('RTDE started')
+    #                 self.__conn_state = ConnectionState.STARTED
+    #             elif(packet_command == Command.RTDE_CONTROL_PACKAGE_PAUSE):
+    #                 self._logger.info('RTDE paused')
+    #                 self.__conn_state = ConnectionState.PAUSED
+    #             elif(packet_command == Command.RTDE_DATA_PACKAGE):
+    #                 self.__updateModel(data)
+    #             elif(packet_command == 0):
+    #                 byte_buffer = bytes()
+    #         else:
+    #             print("skipping package - unexpected packet_size - length: " + str(len(byte_buffer)))
+    #             byte_buffer = bytes()
+
+    #     if len(byte_buffer) != 0:
+    #         self._logger.warning('skipping package - not a package but buffer was not empty')
+    #         byte_buffer = bytes()
 
     def __updateModel(self, rtde_data_package):
         self.__packageCounter = self.__packageCounter + 1
@@ -566,6 +650,8 @@ class RTDE(threading.Thread): #, metaclass=Singleton
             return output
 
         else:
+            # pass
+            # dscho temporarily commented for debugging
             self._logger.error('Unknown RTDE command type: ' + chr(cmd))
 
 
